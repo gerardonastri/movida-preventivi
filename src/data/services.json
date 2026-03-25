@@ -1,0 +1,39 @@
+[
+  {
+    "category": "Compleanni",
+    "packages": [
+      {
+        "name": "Base",
+        "price": 250,
+        "items": [
+          { "name": "Animatori", "qty": 3, "price": 80 },
+          { "name": "Trucca bimbi", "qty": 1, "price": 50 },
+          { "name": "Palloncini", "qty": 1, "price": 40 }
+        ]
+      },
+      {
+        "name": "Premium",
+        "price": 450,
+        "items": [
+          { "name": "Animatori", "qty": 4, "price": 80 },
+          { "name": "Trucca bimbi", "qty": 2, "price": 50 },
+          { "name": "Palloncini scultura", "qty": 1, "price": 70 },
+          { "name": "Photo booth", "qty": 1, "price": 120 }
+        ]
+      }
+    ]
+  },
+  {
+    "category": "Animazioni",
+    "packages": [
+      {
+        "name": "Spettacolo Base",
+        "price": 180,
+        "items": [
+          { "name": "Animatore", "qty": 1, "price": 100 },
+          { "name": "Giochi di gruppo", "qty": 1, "price": 80 }
+        ]
+      }
+    ]
+  }
+]
