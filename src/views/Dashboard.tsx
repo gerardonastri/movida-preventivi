@@ -8,12 +8,15 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ quotes, onNew, onEdit }: DashboardProps) {
-  // Calcolo statistiche rapide
+  // FIX PUNTO 9 e 14: Calcolo statistiche avanzate (Bozze, Confermati, Fatturato Reale)
+  const confirmedQuotes = quotes.filter(q => q.status === 'confirmed');
+  const draftQuotes = quotes.filter(q => q.status === 'draft');
   const totalQuotes = quotes.length;
-  const totalRevenue = quotes.reduce((acc, quote) => {
+
+  // Il fatturato ora calcola solo i preventivi confermati e usa lo sconto in Euro fisso (Punto 8)
+  const totalRevenue = confirmedQuotes.reduce((acc, quote) => {
     const subtotal = quote.services.reduce((sum, s) => sum + (s.qty * s.unitPrice), 0);
-    const discountAmount = (subtotal * quote.discount) / 100;
-    return acc + (subtotal - discountAmount);
+    return acc + (subtotal - quote.discount);
   }, 0);
 
   const recentQuotes = quotes.slice(0, 5); // Mostra solo gli ultimi 5
@@ -36,8 +39,8 @@ export default function Dashboard({ quotes, onNew, onEdit }: DashboardProps) {
         </motion.button>
       </header>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* FIX PUNTO 14: Stats Cards portate a 4 colonne */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <motion.div 
           whileHover={{ y: -2 }}
           className="bg-white rounded-2xl p-6 shadow-[var(--shadow-card)] border border-[var(--border)]"
@@ -50,8 +53,24 @@ export default function Dashboard({ quotes, onNew, onEdit }: DashboardProps) {
           whileHover={{ y: -2 }}
           className="bg-white rounded-2xl p-6 shadow-[var(--shadow-card)] border border-[var(--border)]"
         >
-          <p className="text-sm text-[var(--text-secondary)] font-medium mb-1">Valore Totale Stimato</p>
-          <p className="text-3xl font-bold text-[var(--text-primary)]">€{totalRevenue.toFixed(2)}</p>
+          <p className="text-sm text-[var(--text-secondary)] font-medium mb-1">Confermati</p>
+          <p className="text-3xl font-bold text-green-600">{confirmedQuotes.length}</p>
+        </motion.div>
+
+        <motion.div 
+          whileHover={{ y: -2 }}
+          className="bg-white rounded-2xl p-6 shadow-[var(--shadow-card)] border border-[var(--border)]"
+        >
+          <p className="text-sm text-[var(--text-secondary)] font-medium mb-1">Bozze</p>
+          <p className="text-3xl font-bold text-gray-500">{draftQuotes.length}</p>
+        </motion.div>
+
+        <motion.div 
+          whileHover={{ y: -2 }}
+          className="bg-blue-50 rounded-2xl p-6 shadow-[var(--shadow-card)] border border-blue-100"
+        >
+          <p className="text-sm text-blue-600 font-medium mb-1">Fatturato (Conf.)</p>
+          <p className="text-3xl font-bold text-blue-700">€{totalRevenue.toFixed(0)}</p>
         </motion.div>
       </div>
 

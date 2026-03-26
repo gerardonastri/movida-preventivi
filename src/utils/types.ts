@@ -1,5 +1,6 @@
 export interface ServiceItem {
   name: string;
+  description?: string; // Aggiunto per le note sotto il servizio
   qty: number;
   price: number;
 }
@@ -18,27 +19,20 @@ export interface ServiceCategory {
 export interface QuoteService {
   id: string;
   name: string;
+  description: string; // Aggiunto
   qty: number;
   unitPrice: number;
 }
 
 export interface ClientInfo {
   name: string;
+  address: string; // Aggiunto
   phone: string;
   eventType: string;
   location: string;
   date: string;
-  time: string;
-}
-
-export interface Quote {
-  id: string;           // es. "PREV-001"
-  createdAt: string;
-  client: ClientInfo;
-  services: QuoteService[];
-  discount: number;     // percentuale 0–100
-  notes: string;
-  status: 'draft' | 'sent' | 'confirmed';
+  timeFrom: string;
+  timeTo: string;
 }
 
 export interface CompanySettings {
@@ -49,5 +43,17 @@ export interface CompanySettings {
   email: string;
   website: string;
   iban: string;
-  logoUrl: string;
+  logoBase64: string;
+}
+
+export interface Quote {
+  id: string;
+  createdAt: string;
+  client: ClientInfo;
+  services: QuoteService[];
+  discount: number;
+  notes: string;
+  status: 'draft' | 'sent' | 'confirmed';
+  documentType: 'preventivo' | 'contratto'; // Aggiunto
+  paymentMethod: 'contanti' | 'bonifico'; // Aggiunto
 }

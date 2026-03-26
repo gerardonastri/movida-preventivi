@@ -13,6 +13,18 @@ export default function Settings() {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  // FIX PUNTO 7: Funzione per caricare il logo come Base64 (funziona offline)
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSettings(prev => ({ ...prev, logoBase64: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = () => {
     setIsSaving(true);
     // Fake loading state per dare la sensazione di "elaborazione"
@@ -64,12 +76,29 @@ export default function Settings() {
             <label className={labelClass}>IBAN</label>
             <input value={settings.iban} onChange={(e) => handleChange('iban', e.target.value)} className={inputClass} />
           </div>
+          
+          {/* FIX PUNTO 7: Sezione Logo Aggiornata per Upload File (Base64) */}
           <div className="md:col-span-2 bg-[var(--bg-tertiary)] p-4 rounded-xl mt-2 border border-[var(--border)]">
-            <label className={labelClass}>Path Logo Locale (es. /logo.png)</label>
-            <input value={settings.logoUrl} onChange={(e) => handleChange('logoUrl', e.target.value)} className={inputClass} />
+            <label className={labelClass}>Logo Aziendale (Caricamento Offline)</label>
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={handleImageUpload} 
+              className="text-sm mt-1" 
+            />
             <p className="text-xs text-[var(--text-muted)] mt-2">
-              Inserisci l'immagine del tuo logo chiamandola <code className="bg-gray-200 px-1 rounded text-black">logo.png</code> all'interno della cartella <code className="bg-gray-200 px-1 rounded text-black">public/</code> del progetto.
+              Scegli un'immagine dal tuo PC. Verrà salvata in memoria e usata per il PDF (nessuna connessione internet richiesta).
             </p>
+            {settings.logoBase64 && (
+              <div className="mt-4">
+                <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">Anteprima:</p>
+                <img 
+                  src={settings.logoBase64} 
+                  alt="Preview Logo" 
+                  className="h-16 object-contain border border-[var(--border)] rounded p-1 bg-white" 
+                />
+              </div>
+            )}
           </div>
         </div>
 

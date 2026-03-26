@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
+// FIX: Aggiornati i metodi importati dallo storage per risolvere il bug della concorrenza ID
 import { getQuotes, saveQuote, deleteQuote, generateQuoteId } from './utils/storage';
 import type { Quote } from './utils/types';
 
-// Views (placeholder finché non costruiamo i componenti)
-import Dashboard from './views/Dashboard';
+import Dashboard  from './views/Dashboard';
 import NewQuote   from './views/NewQuote';
 import QuotesList from './views/QuotesList';
 import Settings   from './views/Settings';
@@ -60,9 +60,10 @@ export default function App() {
   function handleDuplicateQuote(id: string) {
     const original = quotes.find(q => q.id === id);
     if (!original) return;
+    
     const clone: Quote = {
       ...original,
-      id: generateQuoteId(),
+      id: generateQuoteId(), // Usiamo il nuovo ID sicuro
       createdAt: new Date().toISOString(),
       status: 'draft',
       client: { ...original.client },

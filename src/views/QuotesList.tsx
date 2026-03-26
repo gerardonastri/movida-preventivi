@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+// FIX PUNTO 11: Import necessari per il download rapido
+import html2pdf from 'html2pdf.js';
 import type { Quote } from '../utils/types';
+import PdfTemplate from '../components/PdfTemplate';
+import { getSettings } from '../utils/storage';
 
 interface QuotesListProps {
   quotes: Quote[];
@@ -12,14 +16,35 @@ interface QuotesListProps {
 
 export default function QuotesList({ quotes, onEdit, onDelete, onDuplicate, onNew }: QuotesListProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // FIX PUNTO 11: Stato per il preventivo da stampare al volo e impostazioni
+  const [quoteForPdf, setQuoteForPdf] = useState<Quote | null>(null);
+  const settings = getSettings();
 
   const filteredQuotes = quotes.filter(q => 
     q.client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     q.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // FIX PUNTO 11: Funzione per il download rapido del PDF dalla lista
+  const handleQuickDownload = (quote: Quote) => {
+    setQuoteForPdf(quote);
+    setTimeout(() => {
+      const element = document.getElementById('list-pdf-container');
+      if (!element) return;
+      const filename = `${quote.id}_${quote.client.name.replace(/\s+/g, '_')}.pdf`;
+      const pdf = html2pdf();
+      pdf.set({ 
+        margin: 0, 
+        filename, 
+        html2canvas: { scale: 2, backgroundColor: '#ffffff' }, 
+        jsPDF: { format: 'a4' } 
+      }).from(element).save().then(() => setQuoteForPdf(null));
+    }, 200);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-[var(--text-primary)]">Archivio Preventivi</h1>
         
@@ -55,7 +80,9 @@ export default function QuotesList({ quotes, onEdit, onDelete, onDuplicate, onNe
           <AnimatePresence>
             {filteredQuotes.map((quote) => {
               const total = quote.services.reduce((acc, s) => acc + (s.qty * s.unitPrice), 0);
-              const finalPrice = total - ((total * quote.discount) / 100);
+              
+              // FIX PUNTO 8: Calcolo dello sconto in Euro fisso invece che percentuale
+              const finalPrice = total - quote.discount;
 
               return (
                 <motion.div
@@ -83,23 +110,31 @@ export default function QuotesList({ quotes, onEdit, onDelete, onDuplicate, onNe
                   </div>
 
                   <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-[var(--border)] pt-4 md:pt-0 md:pl-4">
+                    {/* FIX PUNTO 11: Bottone per il Download Rapido */}
                     <button 
-                      onClick={() => onDuplicate(quote.id)}
-                      className="p-2 text-[var(--text-secondary)] hover:text-(--accent) hover:bg-(--bg-tertiary) rounded-lg transition"
-                      title="Duplica"
+                      onClick={() => handleQuickDownload(quote)}
+                      className="p-2 text-[var(--text-secondary)] hover:text-blue-500 hover:bg-blue-50 rounded-lg transition"
+                      title="Scarica PDF"
                     >
                       📄
                     </button>
                     <button 
+                      onClick={() => onDuplicate(quote.id)}
+                      className="p-2 text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--bg-tertiary)] rounded-lg transition"
+                      title="Duplica"
+                    >
+                      📋
+                    </button>
+                    <button 
                       onClick={() => onDelete(quote.id)}
-                      className="p-2 text-(--text-secondary) hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                      className="p-2 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 rounded-lg transition"
                       title="Elimina"
                     >
                       🗑️
                     </button>
                     <button 
                       onClick={() => onEdit(quote.id)}
-                      className="px-4 py-2 bg-(--bg-tertiary) hover:bg-(--border) text-(--text-primary) text-sm font-medium rounded-lg transition ml-2"
+                      className="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-[var(--border)] text-[var(--text-primary)] text-sm font-medium rounded-lg transition ml-2"
                     >
                       Apri
                     </button>
@@ -109,8 +144,17 @@ export default function QuotesList({ quotes, onEdit, onDelete, onDuplicate, onNe
             })}
           </AnimatePresence>
           {filteredQuotes.length === 0 && searchTerm !== '' && (
-            <p className="text-center text-(--text-muted) py-8">Nessun risultato per "{searchTerm}"</p>
+            <p className="text-center text-[var(--text-muted)] py-8">Nessun risultato per "{searchTerm}"</p>
           )}
+        </div>
+      )}
+
+      {/* FIX PUNTO 11: Rendering invisibile per il PDF rapido */}
+      {quoteForPdf && (
+        <div style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '210mm' }}>
+          <div id="list-pdf-container">
+            <PdfTemplate quote={quoteForPdf} settings={settings} />
+          </div>
         </div>
       )}
     </div>

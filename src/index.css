@@ -1,5 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --color-accent: #3b82f6;
+  --color-accent-soft: #dbeafe;
+  --shadow-soft: 6px 6px 12px #d1d9e6, -6px -6px 12px #ffffff;
+  --shadow-card: 0 10px 30px rgba(0,0,0,0.05);
+  --shadow-hover: 0 15px 40px rgba(0,0,0,0.08);
+}
+
 :root {
   --bg-primary: #f6f7fb;
   --bg-secondary: #ffffff;
@@ -12,6 +21,7 @@
   --accent-soft: #dbeafe;
   --shadow-soft: 6px 6px 12px #d1d9e6, -6px -6px 12px #ffffff;
   --shadow-card: 0 10px 30px rgba(0,0,0,0.05);
+  --shadow-hover: 0 15px 40px rgba(0,0,0,0.08);
 }
 
 * {
@@ -26,6 +36,10 @@ body {
 }
 
 /* Scrollbar sottile */
-::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* Utility per nascondere la scrollbar orizzontale su mobile (Point 16) */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
