@@ -3,20 +3,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
 // FIX: Aggiornati i metodi importati dallo storage per risolvere il bug della concorrenza ID
 import { getQuotes, saveQuote, deleteQuote, generateQuoteId } from './utils/storage';
-import type { Quote } from './utils/types';
+import type { Quote, View } from './utils/types';
 
 import Dashboard  from './views/Dashboard';
 import NewQuote   from './views/NewQuote';
 import QuotesList from './views/QuotesList';
+import Catalog    from './views/Catalog'; // <-- NUOVO IMPORT
 import Settings   from './views/Settings';
-
-type View = 'dashboard' | 'new' | 'quotes' | 'settings';
+import OfflineIndicator from './components/OfflineIndicator';
 
 // Mobile bottom nav
 const mobileNav: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Home',       icon: '▦' },
   { id: 'new',       label: 'Nuovo',      icon: '+' },
   { id: 'quotes',    label: 'Lista',      icon: '≡' },
+  { id: 'catalog',   label: 'Catalogo',   icon: '🏷️' }, // <-- NUOVA ICONA NEL MENU MOBILE
   { id: 'settings',  label: 'Config',     icon: '⚙' },
 ];
 
@@ -106,6 +107,8 @@ export default function App() {
             onNew={handleNewQuote}
           />
         );
+      case 'catalog': // <-- NUOVA ROTTA
+        return <Catalog />;
       case 'settings':
         return <Settings />;
     }
@@ -113,6 +116,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
+      <OfflineIndicator />
       {/* Sidebar desktop */}
       <Sidebar
         activeView={view}

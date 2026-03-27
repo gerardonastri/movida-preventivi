@@ -27,8 +27,8 @@ import Summary from '../components/Summary';
 import PdfTemplate from '../components/PdfTemplate';
 import Toast from '../components/Toast';
 
-// FIX PUNTO 2: Usiamo generateQuoteId per evitare bug di ID su Strict Mode
-import { getEmptyQuote, generateQuoteId, getSettings } from '../utils/storage';
+// FIX PUNTO 2: Usiamo getNextQuoteId e consumeQuoteId per evitare bug di ID su Strict Mode
+import { getEmptyQuote, getNextQuoteId, consumeQuoteId, getSettings } from '../utils/storage';
 import type { Quote } from '../utils/types';
 
 interface NewQuoteProps {
@@ -43,18 +43,33 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
   const [toastMessage, setToastMessage] = useState({ text: '', visible: false, type: 'success' as 'success' | 'info' });
   const settings = getSettings();
 
+  // FIX PWA: Stato per monitorare se siamo online o offline
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
   // FIX PUNTO 13 & 15: Stati per validazione e autosave
   const [showErrors, setShowErrors] = useState(false);
   const [autoSavedAt, setAutoSavedAt] = useState<Date | null>(null);
 
   const [quote, setQuote] = useState<Quote>(() => {
     if (initialQuote) return { ...initialQuote };
-    // generateQuoteId crea un nuovo ID e aggiorna il contatore
-    return { id: generateQuoteId(), createdAt: new Date().toISOString(), ...getEmptyQuote() } as Quote;
+    // getNextQuoteId legge solo il numero senza incrementarlo in memoria
+    return { id: getNextQuoteId(), createdAt: new Date().toISOString(), ...getEmptyQuote() } as Quote;
   });
 
   // Validazione di base
   const isValid = quote.client.name.trim() !== '' && quote.client.date !== '';
+
+  // FIX PWA: Listener per aggiornare lo stato Online/Offline in tempo reale
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // FIX PUNTO 13: Autosave silenzioso se i dati minimi sono validi
   useEffect(() => {
@@ -64,7 +79,7 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
       setAutoSavedAt(new Date());
     }, 2000);
     return () => clearTimeout(timer);
-  }, [quote]);
+  }, [quote, isValid, onSave]);
 
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
     setToastMessage({ text, visible: true, type });
@@ -78,6 +93,11 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
       return;
     }
 
+    // Consuma l'ID solo al momento dell'effettivo salvataggio per la prima volta
+    if (quote.id === getNextQuoteId()) {
+      consumeQuoteId();
+    }
+
     setIsSaving(true);
     // Fake loading per UX premium
     setTimeout(() => {
@@ -89,7 +109,7 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
 
   const handleReset = () => {
     if (confirm("Sei sicuro di voler svuotare tutto? I dati non salvati andranno persi.")) {
-      setQuote({ id: generateQuoteId(), createdAt: new Date().toISOString(), ...getEmptyQuote() } as Quote);
+      setQuote({ id: getNextQuoteId(), createdAt: new Date().toISOString(), ...getEmptyQuote() } as Quote);
       setShowErrors(false);
       showToast("Form svuotato", "info");
     }
@@ -100,6 +120,11 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
       setShowErrors(true);
       showToast("Compila Nome e Data Evento prima di generare il PDF", "info");
       return;
+    }
+
+    // Consuma l'ID prima della generazione se è un nuovo file
+    if (quote.id === getNextQuoteId()) {
+      consumeQuoteId();
     }
 
     setIsGeneratingPdf(true);
@@ -150,10 +175,17 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
           <button onClick={onBack} className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-[var(--shadow-card)] hover:bg-[var(--bg-tertiary)] transition text-lg">←</button>
           <div>
             <h1 className="text-xl font-bold text-[var(--text-primary)]">
-              {initialQuote ? 'Modifica Preventivo' : 'Nuovo Preventivo'}
+              {initialQuote ? 'Modifica Documento' : 'Nuovo Documento'}
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-xs font-semibold text-[var(--accent)]">{quote.id}</p>
+              
+              {/* FIX PWA: Pallino indicatore di stato rete */}
+              <span 
+                className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} 
+                title={isOnline ? 'Sei Online' : 'Sei Offline (I dati vengono salvati in locale)'}
+              ></span>
+
               {autoSavedAt && (
                 <span className="text-[10px] text-gray-400 font-medium">
                   ● Autosave {autoSavedAt.toLocaleTimeString()}

@@ -5,6 +5,11 @@ interface PdfTemplateProps {
   settings: CompanySettings;
 }
 
+interface LegacyService {
+  description?: string;
+  [key: string]: unknown;
+}
+
 export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
   const subtotal = quote.services.reduce((acc, item) => acc + (item.qty * item.unitPrice), 0);
   const total = subtotal - quote.discount;
@@ -108,26 +113,44 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
             </tr>
           </thead>
           <tbody>
-            {quote.services.map((s, i) => (
-              <tr key={i}>
-                <td style={{ borderBottom: '1px solid #e5e7eb', padding: '12px 0', verticalAlign: 'top' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', color: '#000' }}>
-                    {s.qty > 1 ? `${s.qty}X ` : ''}{s.name}
-                  </div>
-                  {s.description && (
-                    <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
-                      {s.description}
+            {quote.services.map((s, i) => {
+              // Sicurezza: supporta i vecchi JSON salvati con "description" al posto di "details"
+              const detailsText = s.details !== undefined ? s.details : (s as unknown as LegacyService).description;
+
+              return (
+                <tr key={i}>
+                  <td style={{ borderBottom: '1px solid #e5e7eb', padding: '12px 0', verticalAlign: 'top' }}>
+                    
+                    {/* NOME SERVIZIO */}
+                    <div style={{ fontWeight: '900', fontSize: '11px', textTransform: 'uppercase', color: '#000' }}>
+                      {s.qty > 1 ? `${s.qty}X ` : ''}{s.name}
                     </div>
-                  )}
-                </td>
-                <td style={{ borderBottom: '1px solid #e5e7eb', padding: '12px 0', fontSize: '12px', textAlign: 'right', verticalAlign: 'top', fontWeight: 'bold' }}>
-                  {formatCurrency(s.qty * s.unitPrice)} €
-                </td>
-              </tr>
-            ))}
+                    
+                    {/* DETTAGLI SERVIZIO (GRIGIO) */}
+                    {detailsText && (
+                      <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
+                        {detailsText}
+                      </div>
+                    )}
+
+                    {/* NOTE EXTRA (AZZURRO POLVERE) */}
+                    {s.notes && (
+                      <div style={{ fontSize: '9px', color: '#4b6584', marginTop: '3px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
+                        {s.notes}
+                      </div>
+                    )}
+
+                  </td>
+                  <td style={{ borderBottom: '1px solid #e5e7eb', padding: '12px 0', fontSize: '12px', textAlign: 'right', verticalAlign: 'top', fontWeight: 'bold' }}>
+                    {formatCurrency(s.qty * s.unitPrice)} €
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
+        {/* Note Documento */}
         <div style={{ fontSize: '10px', fontWeight: 'bold', marginTop: '20px', textTransform: 'uppercase' }}>
           {quote.notes ? quote.notes : 'AUTORIZZAZIONE UTILIZZO PARCO A CURA DEL CLIENTE'}
         </div>

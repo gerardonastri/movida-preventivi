@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
-
-type View = 'dashboard' | 'new' | 'quotes' | 'settings';
+import type { View } from '../utils/types';
 
 interface SidebarProps {
   activeView: View;
@@ -12,6 +11,7 @@ const navItems: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard',       icon: '▦' },
   { id: 'new',       label: 'Nuovo preventivo', icon: '+' },
   { id: 'quotes',    label: 'Preventivi',       icon: '≡' },
+  { id: 'catalog',   label: 'Catalogo',         icon: '🏷️' },
   { id: 'settings',  label: 'Impostazioni',     icon: '⚙' },
 ];
 
@@ -30,10 +30,10 @@ export default function Sidebar({ activeView, onNavigate, quoteCount }: SidebarP
           w-9 h-9 rounded-xl bg-accent
           flex items-center justify-center
           shadow-card text-white text-lg font-bold
-        ">P</div>
+        ">PM</div>
         <div>
           <p className="text-sm font-semibold text-[var(--text-primary)] leading-tight">Preventivi</p>
-          <p className="text-xs text-[var(--text-muted)]">Event Manager</p>
+          <p className="text-xs text-[var(--text-muted)]">Movida In Tour</p>
         </div>
       </div>
 

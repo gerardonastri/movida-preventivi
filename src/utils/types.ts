@@ -1,6 +1,7 @@
 export interface ServiceItem {
   name: string;
-  description?: string; // Aggiunto per le note sotto il servizio
+  details?: string; // Sostituisce la vecchia description
+  notes?: string;   // Aggiunto per le note aggiuntive sotto il dettaglio
   qty: number;
   price: number;
 }
@@ -16,17 +17,27 @@ export interface ServiceCategory {
   packages: Package[];
 }
 
+// NUOVO: Interfaccia per il database del Catalogo
+export interface CatalogItem {
+  id: string;
+  name: string;
+  details: string;
+  notes: string;
+  price: number;
+}
+
 export interface QuoteService {
   id: string;
   name: string;
-  description: string; // Aggiunto
+  details: string; // Aggiornato
+  notes: string;   // Aggiornato
   qty: number;
   unitPrice: number;
 }
 
 export interface ClientInfo {
   name: string;
-  address: string; // Aggiunto
+  address: string;
   phone: string;
   eventType: string;
   location: string;
@@ -54,6 +65,9 @@ export interface Quote {
   discount: number;
   notes: string;
   status: 'draft' | 'sent' | 'confirmed';
-  documentType: 'preventivo' | 'contratto'; // Aggiunto
-  paymentMethod: 'contanti' | 'bonifico'; // Aggiunto
+  documentType: 'preventivo' | 'contratto';
+  paymentMethod: 'contanti' | 'bonifico';
 }
+
+// AGGIUNTO: Esportiamo il tipo View in modo che Sidebar e App lo possano usare
+export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings';
