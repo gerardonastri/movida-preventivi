@@ -1,9 +1,11 @@
 import type { Quote, CompanySettings, CatalogItem } from './types';
+// IMPORTIAMO IL TUO NUOVO CATALOGO BASE
+import defaultCatalog from '../data/defaultCatalog.json';
 
 const QUOTES_KEY = 'preventivi_quotes';
 const COUNTER_KEY = 'preventivi_counter';
 const SETTINGS_KEY = 'preventivi_settings';
-const CATALOG_KEY = 'preventivi_catalog'; // Nuova chiave
+const CATALOG_KEY = 'preventivi_catalog'; 
 
 export function getQuotes(): Quote[] {
   try { return JSON.parse(localStorage.getItem(QUOTES_KEY) || '[]'); } catch { return []; }
@@ -60,20 +62,13 @@ export function saveSettings(settings: CompanySettings): void {
 export function getCatalogItems(): CatalogItem[] {
   try {
     const raw = localStorage.getItem(CATALOG_KEY);
+    // Se l'utente ha modificato il catalogo nell'app, usa quello
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error("Errore nel parsing del catalogo:", e);
   }
-  // Default iniziale basato sul tuo PDF
-  return [
-    {
-      id: crypto.randomUUID(),
-      name: "ANIMAZIONE CON 4 ANIMATORI",
-      details: "ANIMATORI PER ASSISTENZA E GESTIONE CERIMONIA . GIOCHI CLASSICI DI INTRATTENIMENTO",
-      notes: "MAX 28 BIMBI - DAI 4 ANNI IN SU - 1 ANIMATORE PER MASCHETTI E GIOCO PALLONE",
-      price: 300
-    }
-  ];
+  // Altrimenti, usa il file JSON perfetto che abbiamo appena creato!
+  return defaultCatalog as CatalogItem[];
 }
 export function saveCatalogItems(items: CatalogItem[]): void {
   localStorage.setItem(CATALOG_KEY, JSON.stringify(items));

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-// FIX PUNTO 3: Import standard e casting sicuro a "any" nell'uso sotto
+import { motion, AnimatePresence } from 'framer-motion';
 import html2pdf from 'html2pdf.js';
 
 interface Html2PdfOptions {
@@ -15,6 +14,7 @@ interface Html2PdfInstance {
   set: (options: Html2PdfOptions) => Html2PdfInstance;
   from: (element: HTMLElement) => Html2PdfInstance;
   save: () => Promise<void>;
+  outputImg: (type: string) => Promise<string>; // Aggiunto per le immagini
 }
 
 interface Html2PdfStatic {
@@ -27,7 +27,6 @@ import Summary from '../components/Summary';
 import PdfTemplate from '../components/PdfTemplate';
 import Toast from '../components/Toast';
 
-// FIX PUNTO 2: Usiamo getNextQuoteId e consumeQuoteId per evitare bug di ID su Strict Mode
 import { getEmptyQuote, getNextQuoteId, consumeQuoteId, getSettings } from '../utils/storage';
 import type { Quote } from '../utils/types';
 
@@ -42,6 +41,9 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState({ text: '', visible: false, type: 'success' as 'success' | 'info' });
   const settings = getSettings();
+
+  // Stato per il menu a tendina dell'esportazione
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // FIX PWA: Stato per monitorare se siamo online o offline
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -115,10 +117,12 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
     }
   };
 
-  const handleGeneratePdf = () => {
+  // Funzione unificata per generare PDF, JPEG o PNG
+  const handleExport = (format: 'pdf' | 'jpeg' | 'png') => {
     if (!isValid) {
       setShowErrors(true);
-      showToast("Compila Nome e Data Evento prima di generare il PDF", "info");
+      showToast("Compila Nome e Data Evento prima di esportare", "info");
+      setShowExportMenu(false);
       return;
     }
 
@@ -128,25 +132,26 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
     }
 
     setIsGeneratingPdf(true);
-    onSave(quote); // Salva i dati correnti prima di stampare
+    setShowExportMenu(false);
+    onSave(quote); // Salva i dati correnti prima di esportare
 
-    // Usiamo setTimeout per assicurarci che React abbia finito di iniettare i dati nel dom nascosto
     setTimeout(() => {
       const element = document.getElementById('pdf-template-container');
       
       if (!element) {
         setIsGeneratingPdf(false);
-        showToast("Errore PDF. Riprova.", "info");
+        showToast("Errore Export. Riprova.", "info");
         return;
       }
 
       const clientName = quote.client.name ? quote.client.name.replace(/\s+/g, '_') : 'Cliente';
-      const filename = `${quote.id}_${clientName}.pdf`;
+      const filename = `${quote.id}_${clientName}`;
 
       const opt = {
         margin: 0,
-        filename: filename,
-        image: { type: 'jpeg' as const, quality: 0.98 },
+        filename: `${filename}.${format}`,
+        // FIX: Impostiamo il formato immagine dinamicamente (jpeg o png)
+        image: { type: format === 'png' ? 'png' : 'jpeg', quality: 0.98 },
         html2canvas: { 
           scale: 2, 
           useCORS: true, 
@@ -155,15 +160,36 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
       };
 
-      // Esecuzione tramite TS bypass
-      (html2pdf as unknown as Html2PdfStatic)().set(opt).from(element).save().then(() => {
-        setIsGeneratingPdf(false);
-        showToast("PDF Generato con successo!");
-      }).catch((err: Error) => {
-        console.error(err);
-        setIsGeneratingPdf(false);
-        showToast("Errore nella generazione PDF.", "info");
-      });
+      const pdfWorker = (html2pdf as unknown as Html2PdfStatic)().set(opt).from(element);
+
+      if (format === 'pdf') {
+        // Classico download PDF
+        pdfWorker.save().then(() => {
+          setIsGeneratingPdf(false);
+          showToast("PDF Generato con successo!");
+        }).catch((err: Error) => {
+          console.error(err);
+          setIsGeneratingPdf(false);
+          showToast("Errore nella generazione PDF.", "info");
+        });
+      } else {
+        pdfWorker.outputImg('datauristring').then((base64String: string) => {
+          // Creiamo un finto link per innescare il download dell'immagine
+          const link = document.createElement('a');
+          link.href = base64String;
+          link.download = `${filename}.${format}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          setIsGeneratingPdf(false);
+          showToast(`Immagine ${format.toUpperCase()} scaricata!`);
+        }).catch((err: Error) => {
+          console.error(err);
+          setIsGeneratingPdf(false);
+          showToast(`Errore generazione ${format.toUpperCase()}.`, "info");
+        });
+      }
     }, 300);
   };
 
@@ -199,13 +225,43 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
           <button onClick={handleReset} className="px-4 py-2.5 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 rounded-xl font-medium transition text-sm">
             Svuota Form
           </button>
-          <motion.button 
-            whileTap={{ scale: 0.97 }} onClick={handleGeneratePdf} disabled={isGeneratingPdf}
-            className={`px-5 py-2.5 border border-[var(--border)] text-[var(--text-primary)] rounded-xl font-medium shadow-[var(--shadow-card)] transition flex items-center gap-2
-              ${isGeneratingPdf ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-white hover:bg-[var(--bg-tertiary)]'}`}
-          >
-            {isGeneratingPdf ? '⏳ PDF...' : '📄 Scarica PDF'}
-          </motion.button>
+
+          {/* Nuovo bottone Export con Menu a tendina */}
+          <div className="relative">
+            <motion.button 
+              whileTap={{ scale: 0.97 }} 
+              onClick={() => setShowExportMenu(!showExportMenu)} 
+              disabled={isGeneratingPdf}
+              className={`px-5 py-2.5 border border-[var(--border)] text-[var(--text-primary)] rounded-xl font-medium shadow-[var(--shadow-card)] transition flex items-center gap-2
+                ${isGeneratingPdf ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-white hover:bg-[var(--bg-tertiary)]'}`}
+            >
+              {isGeneratingPdf ? '⏳ Export...' : '📄 Esporta...'}
+            </motion.button>
+            
+            <AnimatePresence>
+              {showExportMenu && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute right-0 mt-2 w-48 bg-white border border-[var(--border)] rounded-xl shadow-lg z-50 overflow-hidden"
+                >
+                  <div className="py-1">
+                    <button onClick={() => handleExport('pdf')} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2">
+                      <span className="text-red-500 font-bold">PDF</span> Documento
+                    </button>
+                    <button onClick={() => handleExport('jpeg')} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2 border-t border-[var(--border)]/50">
+                      <span className="text-blue-500 font-bold">JPEG</span> Leggero 
+                    </button>
+                    <button onClick={() => handleExport('png')} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2 border-t border-[var(--border)]/50">
+                      <span className="text-purple-500 font-bold">PNG</span> Alta qualità 
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           <motion.button 
             whileTap={{ scale: 0.97 }} onClick={handleManualSave} disabled={isSaving}
             className={`px-6 py-2.5 text-white rounded-xl font-medium shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-hover)] transition flex items-center gap-2

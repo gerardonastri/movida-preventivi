@@ -1,0 +1,261 @@
+[
+  {
+    "id": "promo-01",
+    "name": "[PROMO] Promo Cerimonia",
+    "details": "3 animatori, 1 gioco a scelta, allestimento tavolo torta base (con torta finta) e 20 gadget personalizzati.",
+    "notes": "Max 20 bimbi",
+    "price": 600
+  },
+  {
+    "id": "promo-02",
+    "name": "[PROMO] Classic Celebration",
+    "details": "DJ e vocalist (impianto audio/luci), balloon in sala, balloon numero gigante, 2 fontane fredde.",
+    "notes": "In sconto da 550€",
+    "price": 300
+  },
+  {
+    "id": "promo-03",
+    "name": "[PROMO] Video Celebration",
+    "details": "DJ e vocalist (impianto audio/luci), postazione Selfie Spin, 2 fontane fredde.",
+    "notes": "In sconto da 600€",
+    "price": 400
+  },
+  {
+    "id": "promo-04",
+    "name": "[PROMO] Photo Celebration",
+    "details": "DJ e vocalist (impianto audio/luci), cabina Selfie Booth, fotografo, fotolibro 25 pagine, 2 fontane fredde.",
+    "notes": "In sconto da 700€",
+    "price": 500
+  },
+  {
+    "id": "promo-05",
+    "name": "[PROMO] Vip Celebration",
+    "details": "DJ e vocalist (impianto audio/luci), allestimento tavolo torta, pacco sorpresa gigante, ingresso VIP, 6 fontane fredde.",
+    "notes": "Fontane divise in 3 momenti • In sconto da 800€",
+    "price": 600
+  },
+  {
+    "id": "staff-01",
+    "name": "[ANIMATORI] Compleanno (2 ore)",
+    "details": "2 Animatori per assistenza, gestione cerimonia e giochi classici di intrattenimento.",
+    "notes": "Fino a 15 bambini • Durata max 2 ore",
+    "price": 150
+  },
+  {
+    "id": "staff-02",
+    "name": "[ANIMATORI] Cerimonia (5 ore)",
+    "details": "2 Animatori per assistenza, gestione cerimonia e giochi classici di intrattenimento.",
+    "notes": "Fino a 15 bambini • Durata max 5 ore",
+    "price": 200
+  },
+  {
+    "id": "staff-03",
+    "name": "[ANIMATORI] Matrimonio (8 ore)",
+    "details": "2 Animatori per assistenza, gestione cerimonia e giochi classici di intrattenimento.",
+    "notes": "Fino a 15 bambini • Durata max 8 ore",
+    "price": 250
+  },
+  {
+    "id": "attr-01",
+    "name": "[0-6 ANNI] Teatrino Burattini e Mascotte",
+    "details": "Spettacolo esilarante di burattini. Al momento della torta appare la Mascotte per le foto insieme.",
+    "notes": "Tema a scelta (Disney, Minions, Supermario, Sonic, PawPatrol...)",
+    "price": 100
+  },
+  {
+    "id": "attr-02",
+    "name": "[0-6 ANNI] Mascotte e Personaggi",
+    "details": "Presenza della mascotte preferita dal festeggiato per taglio torta e foto.",
+    "notes": "Soggetto a disponibilità magazzino",
+    "price": 70
+  },
+  {
+    "id": "attr-03",
+    "name": "[0-6 ANNI] Ludoteca a Casa Tua",
+    "details": "Salterello Gonfiabile, Piscina con 500 Palline e tanti giochi per il divertimento più sfrenato.",
+    "notes": "Spazio min: 25 mq • Età consigliata: 0-3 anni",
+    "price": 150
+  },
+  {
+    "id": "attr-04",
+    "name": "[0-6 ANNI] Circus & Sweets",
+    "details": "Postazioni di gioco a tema Lunapark, Bowling gonfiabile e Zucchero Filato finale per tutti.",
+    "notes": "Età consigliata: 0-5 anni",
+    "price": 150
+  },
+  {
+    "id": "attr-05",
+    "name": "[0-6 ANNI] Miniscivolo Gonfiabile",
+    "details": "Gonfiabile su misura per ambienti piccoli (casa/ristorante) con salterello e scivolo integrato.",
+    "notes": "Spazio min: 4x4x2h metri • Età consigliata: 0-5 anni",
+    "price": 100
+  },
+  {
+    "id": "attr-06",
+    "name": "[0-6 ANNI] Maxiscivolo Gonfiabile",
+    "details": "Allestimento dello scivolone Gonfiabile Maxi.",
+    "notes": "Spazio min: 5x4x3h metri • Età consigliata: 2-7 anni",
+    "price": 150
+  },
+  {
+    "id": "attr-07",
+    "name": "[0-6 ANNI] Baby Sport",
+    "details": "Percorso sportivo pensato per i più piccoli con attività fisiche divertenti.",
+    "notes": "Età consigliata: 2-5 anni",
+    "price": 150
+  },
+  {
+    "id": "attr-08",
+    "name": "[ATTRAZIONE] Calcio Balilla Gonfiabile",
+    "details": "Il classico calcio balilla rivisitato in versione gigante umana.",
+    "notes": "Spazio min: 12x4x3h metri • Età minima: 7 anni",
+    "price": 250
+  },
+  {
+    "id": "attr-09",
+    "name": "[ATTRAZIONE] Baby SPA",
+    "details": "Percorso relax con manicure, pedicure, luci ambiente, acconciature, make-up soft e angolo bio.",
+    "notes": "Spazio necessario: 40 mq",
+    "price": 150
+  },
+  {
+    "id": "attr-10",
+    "name": "[ATTRAZIONE] Maxi Giochi",
+    "details": "Esperienza immersiva nei giochi classici da tavolo, rivisitati in versione gigante.",
+    "notes": "Spazio necessario: 25 mq",
+    "price": 200
+  },
+  {
+    "id": "attr-11",
+    "name": "[ATTRAZIONE] Bumper Ball",
+    "details": "Sfida all'interno di palloni giganti. Vince chi resta nel perimetro.",
+    "notes": "Età minima: 7 anni",
+    "price": 100
+  },
+  {
+    "id": "attr-12",
+    "name": "[ATTRAZIONE] Movida Nerf Target",
+    "details": "Sfida di precisione a punti con blaster Nerf stile Fortnite e bersagli.",
+    "notes": "Spazio min: 5x3 metri • Età minima: 6 anni",
+    "price": 150
+  },
+  {
+    "id": "attr-13",
+    "name": "[ATTRAZIONE] Giocando con le Bolle",
+    "details": "Laboratorio di creazione bolle di sapone ed esperienza immersiva nella bolla gigante.",
+    "notes": "Adatto ad ambienti interni/esterni protetti",
+    "price": 100
+  },
+  {
+    "id": "attr-14",
+    "name": "[ATTRAZIONE] Pyjama Party",
+    "details": "Allestimento suggestivo con tende teepee, luci, plaid e cuscini.",
+    "notes": "Spazio necessario: 15 mq",
+    "price": 100
+  },
+  {
+    "id": "attr-15",
+    "name": "[ATTRAZIONE] Lasergame",
+    "details": "Sfida a squadre con sensori laser, labirinto e modalità conquista bandiera.",
+    "notes": "Spazio min: 35 mq • Età minima: 7 anni",
+    "price": 300
+  },
+  {
+    "id": "show-01",
+    "name": "[SHOW] Spettacolo di Magia",
+    "details": "Spettacolo di magia esilarante e divertente eseguito da mago professionista.",
+    "notes": "Durata: 30 minuti",
+    "price": 300
+  },
+  {
+    "id": "show-02",
+    "name": "[SHOW] L'Arte della Giocoleria",
+    "details": "Spettacolo interattivo, dinamico e pieno di suspense.",
+    "notes": "Durata: 30 minuti",
+    "price": 300
+  },
+  {
+    "id": "show-03",
+    "name": "[SHOW] Varietà a Tema",
+    "details": "Spettacolo interattivo con 2 attori professionisti (es. Jack Sparrow, Olaf, Wonka, Harry Potter).",
+    "notes": "Durata: 30 minuti",
+    "price": 250
+  },
+  {
+    "id": "show-04",
+    "name": "[SHOW] Spettacolo del Fuoco",
+    "details": "Performance mozzafiato con il fuoco eseguita da professionista certificato.",
+    "notes": "Solo esterni • Durata: 15 minuti",
+    "price": 300
+  },
+  {
+    "id": "show-05",
+    "name": "[SHOW] Trampolieri a Tema",
+    "details": "Accoglienza e show con artisti su trampoli (sposi, luminosi o circensi).",
+    "notes": "Durata: 30 minuti",
+    "price": 300
+  },
+  {
+    "id": "show-06",
+    "name": "[SHOW] Ballerina sulla Piscina",
+    "details": "Danza acrobatica elegante dentro una bolla gigante direttamente sull'acqua.",
+    "notes": "Necessaria piscina sul posto • Durata: 10 minuti",
+    "price": 200
+  },
+  {
+    "id": "show-07",
+    "name": "[SHOW] Spettacolo Luminoso & Farfalle",
+    "details": "Coreografia con artisti luminosi, trampolieri e farfalle danzanti. Set fotografico finale.",
+    "notes": "Durata: 20 minuti",
+    "price": 500
+  },
+  {
+    "id": "18-01",
+    "name": "[18+] SelfieSpin 360",
+    "details": "Pista rotante per Video Selfie a 360°. Musica, luci e trucchi fluo inclusi per video virali.",
+    "notes": "Operatore e postazione inclusi",
+    "price": 350
+  },
+  {
+    "id": "18-02",
+    "name": "[18+] DJ & Vocalist Completo",
+    "details": "DJ set personalizzato, Vocalist per intrattenimento e impianto completo audio/luci/video.",
+    "notes": "Proiettore incluso",
+    "price": 250
+  },
+  {
+    "id": "18-03",
+    "name": "[18+] Red Carpet",
+    "details": "Ingresso stile VIP con tappeto rosso, scenografia carta da strappare e Fontane Fredde.",
+    "notes": "Effetto Wow Garantito",
+    "price": 150
+  },
+  {
+    "id": "bal-01",
+    "name": "[BALLOON] All Inclusive A",
+    "details": "30 palloncini sospesi per il volo del desiderio e 20 palloncini sospesi ai tavoli.",
+    "notes": "Scelta max 2 colori",
+    "price": 100
+  },
+  {
+    "id": "bal-02",
+    "name": "[BALLOON] Organic Scenografico",
+    "details": "Composizione organica elegante di palloncini per foto e tavolo torta.",
+    "notes": "Colori e stile su misura",
+    "price": 150
+  },
+  {
+    "id": "set-01",
+    "name": "[ALLESTIMENTO] Medium",
+    "details": "Tavolo a scelta (classico, cilindri o alzatine), fondale cerchio/esagono, accessorio e sweet table.",
+    "notes": "Include 3kg confetti e 1kg caramelle",
+    "price": 300
+  },
+  {
+    "id": "set-02",
+    "name": "[ALLESTIMENTO] Large",
+    "details": "Tavolo, fondale, accessorio led/balloon, scritta sospesa, tableau, segnatavoli e sweet table.",
+    "notes": "Include 3kg confetti e 1kg caramelle",
+    "price": 400
+  }
+]
