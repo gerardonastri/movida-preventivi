@@ -12,28 +12,37 @@ interface LegacyService {
 
 export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
   const subtotal = quote.services.reduce((acc, item) => acc + (item.qty * item.unitPrice), 0);
-  const total = subtotal - quote.discount;
-  
+  const itemDiscounts = quote.services.reduce((acc, item) => acc + (item.itemDiscount || 0), 0);
+  const totalDiscount = (quote.discount || 0) + itemDiscounts;
+  const total = subtotal - totalDiscount;
+
+  const isContratto = quote.documentType === 'contratto';
+
   const dateObj = quote.client.date ? new Date(quote.client.date) : null;
-  const formattedDate = dateObj 
+  const formattedDate = dateObj
     ? dateObj.toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()
     : '___/___/______';
 
-  const creationDate = new Date(quote.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const creationDate = new Date(quote.createdAt).toLocaleDateString('it-IT', {
+    day: '2-digit', month: '2-digit', year: 'numeric'
+  });
 
-  const formatCurrency = (num: number) => {
-    return new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
-  };
+  const formatCurrency = (num: number) =>
+    new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+
+  // Testo per la sezione fattura elettronica
+  const invoiceText = settings.invoiceText ||
+    'Da compilare per richiesta fattura elettronica: P.IVA/C.F. _____________________ Codice SDI / PEC _____________________';
 
   return (
-    <div 
-      id="pdf-template-container" 
-      style={{ 
+    <div
+      id="pdf-template-container"
+      style={{
         backgroundColor: '#ffffff',
         color: '#000000',
-        width: '210mm', 
-        minHeight: '297mm', 
-        padding: '12mm 15mm', 
+        width: '210mm',
+        minHeight: '297mm',
+        padding: '12mm 15mm',
         fontFamily: 'Arial, Helvetica, sans-serif',
         boxSizing: 'border-box',
         display: 'flex',
@@ -45,10 +54,10 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px' }}>
         <div style={{ width: '60%', display: 'flex', gap: '15px' }}>
-          <img 
-            src={settings.logoBase64 || "/logo.avif"} 
-            alt="Logo" 
-            style={{ width: '90px', height: '90px', objectFit: 'contain' }} 
+          <img
+            src={settings.logoBase64 || "/logo.avif"}
+            alt="Logo"
+            style={{ width: '90px', height: '90px', objectFit: 'contain' }}
             crossOrigin="anonymous"
           />
           <div style={{ paddingTop: '2px' }}>
@@ -66,7 +75,7 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
             </div>
           </div>
         </div>
-        
+
         <div style={{ width: '35%', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
           <p style={{ fontWeight: 'bold', fontSize: '13px', margin: '0 0 6px 0', color: '#444' }}>COPIA CLIENTE</p>
           <div style={{ border: '2px solid #000000', padding: '12px', textAlign: 'center', width: '100%' }}>
@@ -74,9 +83,12 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
               {quote.documentType.toUpperCase()}
             </p>
             <p style={{ fontSize: '11px', margin: '0 0 8px 0' }}>del {creationDate}</p>
-            <p style={{ fontSize: '10px', fontWeight: 'bold', margin: '0' }}>
-              VALIDITÀ DEL PREVENTIVO 10gg
-            </p>
+            {/* FIX: Validità del preventivo NON stampata nel contratto */}
+            {!isContratto && (
+              <p style={{ fontSize: '10px', fontWeight: 'bold', margin: '0' }}>
+                VALIDITÀ DEL PREVENTIVO 10gg
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -90,7 +102,9 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
         <div style={{ display: 'flex' }}>
           <span style={{ fontWeight: 'bold', width: '85px' }}>In data</span>
           <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
-            {formattedDate} {quote.client.timeFrom ? `dalle ${quote.client.timeFrom}` : ''} {quote.client.timeTo ? `alle ${quote.client.timeTo}` : ''}
+            {formattedDate}
+            {quote.client.timeFrom ? ` dalle ${quote.client.timeFrom}` : ''}
+            {quote.client.timeTo ? ` alle ${quote.client.timeTo}` : ''}
           </span>
         </div>
         <div style={{ display: 'flex' }}>
@@ -114,35 +128,45 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
           </thead>
           <tbody>
             {quote.services.map((s, i) => {
-              // Sicurezza: supporta i vecchi JSON salvati con "description" al posto di "details"
               const detailsText = s.details !== undefined ? s.details : (s as unknown as LegacyService).description;
+              const lineSubtotal = s.qty * s.unitPrice;
+              const lineDiscount = s.itemDiscount || 0;
+              const lineTotal = lineSubtotal - lineDiscount;
 
               return (
                 <tr key={i}>
                   <td style={{ borderBottom: '1px solid #e5e7eb', padding: '12px 0', verticalAlign: 'top' }}>
-                    
-                    {/* NOME SERVIZIO */}
                     <div style={{ fontWeight: '900', fontSize: '11px', textTransform: 'uppercase', color: '#000' }}>
                       {s.qty > 1 ? `${s.qty}X ` : ''}{s.name}
                     </div>
-                    
-                    {/* DETTAGLI SERVIZIO (GRIGIO) */}
                     {detailsText && (
                       <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
                         {detailsText}
                       </div>
                     )}
-
-                    {/* NOTE EXTRA (AZZURRO POLVERE) */}
                     {s.notes && (
                       <div style={{ fontSize: '9px', color: '#4b6584', marginTop: '3px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
                         {s.notes}
                       </div>
                     )}
-
+                    {/* FIX: mostra sconto per singolo item se presente */}
+                    {lineDiscount > 0 && (
+                      <div style={{ fontSize: '9px', color: '#dc2626', marginTop: '3px', fontWeight: 'bold' }}>
+                        SCONTO: - {formatCurrency(lineDiscount)} €
+                      </div>
+                    )}
                   </td>
                   <td style={{ borderBottom: '1px solid #e5e7eb', padding: '12px 0', fontSize: '12px', textAlign: 'right', verticalAlign: 'top', fontWeight: 'bold' }}>
-                    {formatCurrency(s.qty * s.unitPrice)} €
+                    {lineDiscount > 0 ? (
+                      <div>
+                        <div style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '10px' }}>
+                          {formatCurrency(lineSubtotal)} €
+                        </div>
+                        <div>{formatCurrency(lineTotal)} €</div>
+                      </div>
+                    ) : (
+                      `${formatCurrency(lineTotal)} €`
+                    )}
                   </td>
                 </tr>
               );
@@ -152,30 +176,37 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
 
         {/* Note Documento */}
         <div style={{ fontSize: '10px', fontWeight: 'bold', marginTop: '20px', textTransform: 'uppercase' }}>
-          {quote.notes ? quote.notes : 'AUTORIZZAZIONE UTILIZZO PARCO A CURA DEL CLIENTE'}
+          {quote.notes || 'AUTORIZZAZIONE UTILIZZO PARCO A CURA DEL CLIENTE'}
         </div>
       </div>
 
       {/* FOOTER */}
       <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '2px solid #000000', paddingTop: '15px' }}>
-        
+
+        {/* Colonna sinistra: dati cliente + modalità pagamento */}
         <div style={{ width: '55%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ fontSize: '11px', lineHeight: '1.8' }}>
-            <p style={{ margin: '0' }}>richiesto da <span style={{ fontWeight: 'bold', fontSize: '12px' }}>{quote.client.name.toUpperCase() || '_________________________________'}</span></p>
+            <p style={{ margin: '0' }}>
+              richiesto da <span style={{ fontWeight: 'bold', fontSize: '12px' }}>
+                {quote.client.name.toUpperCase() || '_________________________________'}
+              </span>
+            </p>
             <p style={{ margin: '0' }}>indirizzo {quote.client.address || '_________________________________________________'}</p>
-            <p style={{ margin: '0' }}>Cell <span style={{ fontWeight: 'bold' }}>{quote.client.phone || '__________________'}</span> P.IVA/C.F ____________________</p>
+            <p style={{ margin: '0' }}>
+              Cell <span style={{ fontWeight: 'bold' }}>{quote.client.phone || '__________________'}</span>
+            </p>
           </div>
 
           <div style={{ fontSize: '10px', lineHeight: '1.5' }}>
             <div style={{ marginBottom: '6px' }}><span style={{ fontWeight: 'bold' }}>Modalità</span></div>
-            
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
               <div style={{ border: '1px solid #000', width: '12px', height: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', fontSize: '10px' }}>
                 {quote.paymentMethod === 'contanti' ? 'X' : ''}
               </div>
               <span>CONTANTI A FINE EVENTO</span>
             </div>
-            
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
               <div style={{ border: '1px solid #000', width: '12px', height: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', fontSize: '10px' }}>
                 {quote.paymentMethod === 'bonifico' ? 'X' : ''}
@@ -183,27 +214,56 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
               <span>BONIFICO BANCARIO ANTICIPATO</span>
             </div>
 
-            <div style={{ marginBottom: '4px' }}><span style={{ fontWeight: 'bold' }}>DA COMPILARE PER FATTURA ELETTRONICA</span></div>
-            <div><span style={{ fontWeight: 'bold' }}>BONIFICO BANCA INTESA</span><br/>IBAN: {settings.iban}</div>
+            {/* FIX: testo fattura elettronica configurabile da Settings */}
+            <div style={{ marginBottom: '4px', fontWeight: 'bold', textTransform: 'uppercase', fontSize: '9px' }}>
+              {invoiceText}
+            </div>
+            <div><span style={{ fontWeight: 'bold' }}>BONIFICO BANCA INTESA</span><br />IBAN: {settings.iban}</div>
           </div>
         </div>
 
+        {/* Colonna destra: totali + firma */}
         <div style={{ width: '40%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ border: '2px solid #000000', padding: '12px', fontSize: '11px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}><span>Totale compenso</span><span>{formatCurrency(subtotal)} €</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontWeight: 'bold' }}><span>SCONTO RISERVATO</span><span>{formatCurrency(quote.discount)} €</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}><span>Acconto</span><span>0,00 €</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #000', fontWeight: '900', fontSize: '14px' }}><span>Saldo</span><span>{formatCurrency(total)} €</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span>Totale compenso</span>
+              <span>{formatCurrency(subtotal)} €</span>
+            </div>
+
+            {/* FIX: mostra sconto globale separato dagli sconti per item */}
+            {itemDiscounts > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: '#dc2626', fontSize: '10px' }}>
+                <span>Sconti su servizi</span>
+                <span>- {formatCurrency(itemDiscounts)} €</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontWeight: 'bold' }}>
+              <span>SCONTO RISERVATO</span>
+              <span>{formatCurrency(quote.discount || 0)} €</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span>Acconto</span>
+              <span>0,00 €</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #000', fontWeight: '900', fontSize: '14px' }}>
+              <span>Saldo</span>
+              <span>{formatCurrency(total)} €</span>
+            </div>
           </div>
+
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: '10px', fontWeight: 'bold', margin: '0 0 35px 0' }}>PER ACCETTAZIONE</p>
             <div style={{ borderBottom: '1px solid #000000', width: '80%', margin: '0 auto' }}></div>
           </div>
         </div>
       </div>
-      
+
       <div style={{ textAlign: 'center', fontSize: '8px', fontWeight: 'bold', marginTop: '15px' }}>
-        DOCUMENTO VALIDO SOLO SE DEBITAMENTE COMPILATO OVE NECESSARIO - FIRMATO E REINVIATO AL {settings.phone.split('-')[1]?.trim() || settings.phone}
+        DOCUMENTO VALIDO SOLO SE DEBITAMENTE COMPILATO OVE NECESSARIO - FIRMATO E REINVIATO AL{' '}
+        {settings.phone.split('-')[1]?.trim() || settings.phone}
       </div>
     </div>
   );
