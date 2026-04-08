@@ -86,6 +86,7 @@ export default function App() {
             quotes={quotes}
             onNew={handleNewQuote}
             onEdit={handleEditQuote}
+            onQuotesChange={setQuotes}
           />
         );
       case 'new':

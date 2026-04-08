@@ -64,9 +64,9 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
     if (initialQuote) {
       // Migrazione: preventivi vecchi potrebbero non avere selectedNotes/promoLocale
       return {
-        selectedNotes: [],
-        promoLocale: false,
         ...initialQuote,
+        selectedNotes: initialQuote.selectedNotes ?? [],
+        promoLocale: initialQuote.promoLocale ?? false,
       };
     }
     return {
