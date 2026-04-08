@@ -61,7 +61,14 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
   const [autoSavedAt, setAutoSavedAt] = useState<Date | null>(null);
 
   const [quote, setQuote] = useState<Quote>(() => {
-    if (initialQuote) return { ...initialQuote };
+    if (initialQuote) {
+      // Migrazione: preventivi vecchi potrebbero non avere selectedNotes/promoLocale
+      return {
+        selectedNotes: [],
+        promoLocale: false,
+        ...initialQuote,
+      };
+    }
     return {
       id: getNextQuoteId(),
       createdAt: new Date().toISOString(),
@@ -353,12 +360,16 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
             services={quote.services}
             discount={quote.discount}
             onDiscountChange={(discount) => setQuote({ ...quote, discount })}
+            selectedNotes={quote.selectedNotes ?? []}
+            onSelectedNotesChange={(selectedNotes) => setQuote({ ...quote, selectedNotes })}
             notes={quote.notes}
             onNotesChange={(notes) => setQuote({ ...quote, notes })}
             documentType={quote.documentType}
             onDocumentTypeChange={(type) => setQuote({ ...quote, documentType: type })}
             paymentMethod={quote.paymentMethod}
             onPaymentMethodChange={(method) => setQuote({ ...quote, paymentMethod: method })}
+            promoLocale={quote.promoLocale ?? false}
+            onPromoLocaleChange={(promoLocale) => setQuote({ ...quote, promoLocale })}
           />
         </div>
       </div>

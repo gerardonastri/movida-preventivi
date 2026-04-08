@@ -32,7 +32,7 @@ export interface QuoteService {
   notes: string;
   qty: number;
   unitPrice: number;
-  itemDiscount?: number; // FIX: sconto per singolo item (€)
+  itemDiscount?: number;
 }
 
 export interface ClientInfo {
@@ -55,28 +55,34 @@ export interface CompanySettings {
   website: string;
   iban: string;
   logoBase64: string;
-  invoiceText?: string; // FIX: testo per richiesta fattura elettronica
+  invoiceText?: string;
 }
 
-// FIX: note a piè di pagina predefinite
-export const DEFAULT_FOOTER_NOTES = [
-  'Autorizzazione utilizzo parco a cura del cliente.',
-  'Il servizio è subordinato alle condizioni atmosferiche.',
-  'Prezzo comprensivo di allestimento e smontaggio.',
-  'Eventuale prolungamento orario da concordare e quotare separatamente.',
-  'Acconto del 30% richiesto alla firma del contratto.',
-] as const;
+// ─── Note a piè di pagina ────────────────────────────────────────────────────
+// Lista fissa mostrata come checkbox multipli nel Summary.
+// L'utente può spuntarne quante vuole; vengono stampate in ordine sul PDF.
+export const DEFAULT_FOOTER_NOTES: string[] = [
+  'IN ORDINE DI IMPORTANZA',
+  'ONERI SIAE A CARICO DEL CLIENTE/STRUTTURA',
+  'DURANTE LA CERIMONIA LE ATTIVITÀ DI ANIMAZIONE, CONTROLLO E ASSISTENZA VERRANNO GARANTITE SOLO AI BAMBINI DAI 3 ANNI IN SU',
+  "IL MENÙ BAMBINI PER GLI ANIMATORI È A CARICO DEL CLIENTE",
+  'DURANTE LA MANIFESTAZIONE, LE ATTIVITÀ DI ASSISTENZA E CONTROLLO DEI BAMBINI PARTECIPANTI, NON SONO A NOSTRO CARICO',
+  'IN CASO DI CONDIZIONI ATMOSFERICHE AVVERSE I GIOCHI SARANNO ADATTATI NEGLI SPAZI INTERNI',
+  "IN MANCANZA DI QUESTI IN MODALITÀ STATICA AL TAVOLO IN ATTESA DI RIPRENDERE ALL'ESTERNO",
+];
 
 export interface Quote {
   id: string;
   createdAt: string;
   client: ClientInfo;
   services: QuoteService[];
-  discount: number; // sconto globale sul totale
-  notes: string;    // note a piè di pagina
+  discount: number;
+  selectedNotes: string[];   // note checkbox selezionate
+  notes: string;             // testo libero aggiuntivo
   status: 'draft' | 'sent' | 'confirmed';
   documentType: 'preventivo' | 'contratto';
   paymentMethod: 'contanti' | 'bonifico';
+  promoLocale: boolean;      // nasconde importi → "PROMO LOCALE"
 }
 
 export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings';
