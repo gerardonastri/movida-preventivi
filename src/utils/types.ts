@@ -33,6 +33,7 @@ export interface QuoteService {
   qty: number;
   unitPrice: number;
   itemDiscount?: number;
+  omaggio?: boolean;   // se true → riga resa gratis, importo 0 sul PDF
 }
 
 export interface ClientInfo {
@@ -59,17 +60,19 @@ export interface CompanySettings {
 }
 
 // ─── Note a piè di pagina ────────────────────────────────────────────────────
-// Lista fissa mostrata come checkbox multipli nel Summary.
-// L'utente può spuntarne quante vuole; vengono stampate in ordine sul PDF.
 export const DEFAULT_FOOTER_NOTES: string[] = [
   'IN ORDINE DI IMPORTANZA',
   'ONERI SIAE A CARICO DEL CLIENTE/STRUTTURA',
   'DURANTE LA CERIMONIA LE ATTIVITÀ DI ANIMAZIONE, CONTROLLO E ASSISTENZA VERRANNO GARANTITE SOLO AI BAMBINI DAI 3 ANNI IN SU',
-  "IL MENÙ BAMBINI PER GLI ANIMATORI È A CARICO DEL CLIENTE",
+  'IL MENÙ BAMBINI PER GLI ANIMATORI È A CARICO DEL CLIENTE',
   'DURANTE LA MANIFESTAZIONE, LE ATTIVITÀ DI ASSISTENZA E CONTROLLO DEI BAMBINI PARTECIPANTI, NON SONO A NOSTRO CARICO',
   'IN CASO DI CONDIZIONI ATMOSFERICHE AVVERSE I GIOCHI SARANNO ADATTATI NEGLI SPAZI INTERNI',
   "IN MANCANZA DI QUESTI IN MODALITÀ STATICA AL TAVOLO IN ATTESA DI RIPRENDERE ALL'ESTERNO",
 ];
+
+// Scritta legale che appare SEMPRE in fondo ad ogni documento
+export const LEGAL_CLOSING =
+  'Il presente documento ha validità legale anche senza firma autografa e si intende accettato al momento del ricevimento.';
 
 export interface Quote {
   id: string;

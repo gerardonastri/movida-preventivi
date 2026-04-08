@@ -12,7 +12,6 @@ export default function ServicesList({ services, onChange }: ServicesListProps) 
   const [catalog] = useState<CatalogItem[]>(getCatalogItems());
   const [catalogSearch, setCatalogSearch] = useState('');
 
-  // FIX: ricerca pacchetti nel pannello catalogo
   const filteredCatalog = catalog.filter(item =>
     item.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
     item.details.toLowerCase().includes(catalogSearch.toLowerCase())
@@ -27,15 +26,19 @@ export default function ServicesList({ services, onChange }: ServicesListProps) 
       qty: 1,
       unitPrice: item.price,
       itemDiscount: 0,
+      omaggio: false,
     };
     onChange([...services, newService]);
   };
 
   const handleAddCustom = () => {
-    onChange([...services, { id: crypto.randomUUID(), name: '', details: '', notes: '', qty: 1, unitPrice: 0, itemDiscount: 0 }]);
+    onChange([...services, {
+      id: crypto.randomUUID(), name: '', details: '', notes: '',
+      qty: 1, unitPrice: 0, itemDiscount: 0, omaggio: false,
+    }]);
   };
 
-  const updateService = (id: string, field: keyof QuoteService, value: string | number) => {
+  const updateService = (id: string, field: keyof QuoteService, value: string | number | boolean) => {
     onChange(services.map(s => s.id === id ? { ...s, [field]: value } : s));
   };
 
@@ -52,7 +55,7 @@ export default function ServicesList({ services, onChange }: ServicesListProps) 
         Servizi e Pacchetti
       </h2>
 
-      {/* Pannello Catalogo con RICERCA */}
+      {/* Pannello Catalogo con ricerca */}
       <div className="bg-[var(--bg-primary)] p-4 rounded-xl border border-[var(--border)]">
         <div className="flex justify-between items-center mb-3">
           <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
@@ -63,7 +66,6 @@ export default function ServicesList({ services, onChange }: ServicesListProps) 
           </span>
         </div>
 
-        {/* FIX: Barra di ricerca pacchetti */}
         <div className="relative mb-3">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
           <input
@@ -112,7 +114,7 @@ export default function ServicesList({ services, onChange }: ServicesListProps) 
         </div>
       </div>
 
-      {/* Righe del Preventivo (Drag & Drop) */}
+      {/* Righe Preventivo — Drag & Drop */}
       <div className="space-y-3">
         {services.length === 0 && (
           <p className="text-sm text-[var(--text-muted)] text-center py-4 italic">
@@ -122,101 +124,128 @@ export default function ServicesList({ services, onChange }: ServicesListProps) 
 
         <Reorder.Group axis="y" values={services} onReorder={onChange} className="space-y-3">
           {services.map((item) => {
-            const lineTotal = (item.qty * item.unitPrice) - (item.itemDiscount || 0);
+            const isOmaggio = !!item.omaggio;
+            const lineTotal = isOmaggio ? 0 : (item.qty * item.unitPrice) - (item.itemDiscount || 0);
+
             return (
               <Reorder.Item
                 key={item.id}
                 value={item}
-                className="flex flex-col gap-2 bg-white border border-[var(--border)] p-3 rounded-xl group relative hover:shadow-md transition-shadow"
+                className={`flex flex-col gap-2 border p-3 rounded-xl group relative transition-shadow hover:shadow-md ${
+                  isOmaggio
+                    ? 'bg-emerald-50 border-emerald-200'
+                    : 'bg-white border-[var(--border)]'
+                }`}
               >
-                {/* Riga principale: drag + nome + qty + prezzo + sconto item + elimina */}
+                {/* Riga principale */}
                 <div className="flex items-center gap-2 w-full">
-                  <div className="cursor-grab active:cursor-grabbing px-1 text-gray-400">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {/* Drag handle */}
+                  <div className="cursor-grab active:cursor-grabbing px-1 text-gray-400 flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/>
                       <circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>
                     </svg>
                   </div>
 
+                  {/* Nome */}
                   <div className="flex-1">
                     <input
                       type="text"
                       value={item.name}
                       onChange={(e) => updateService(item.id, 'name', e.target.value)}
-                      placeholder="Nome Servizio (Testo Nero in PDF)..."
-                      className={inputClass + " font-bold uppercase text-xs"}
+                      placeholder="Nome Servizio..."
+                      className={inputClass + " font-bold uppercase text-xs" + (isOmaggio ? ' line-through text-emerald-600' : '')}
                     />
                   </div>
 
                   {/* Qty */}
-                  <div className="w-14">
+                  <div className="w-14 flex-shrink-0">
                     <input
-                      type="number"
-                      min="1"
+                      type="number" min="1"
                       value={item.qty}
                       onChange={(e) => updateService(item.id, 'qty', Number(e.target.value))}
-                      className={inputClass + " text-center"}
+                      disabled={isOmaggio}
+                      className={inputClass + " text-center" + (isOmaggio ? ' opacity-40' : '')}
                       title="Quantità"
                     />
                   </div>
 
                   {/* Prezzo unitario */}
-                  <div className="w-24 relative">
+                  <div className="w-24 relative flex-shrink-0">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm">€</span>
                     <input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      type="number" min="0" step="0.01"
                       value={item.unitPrice}
                       onChange={(e) => updateService(item.id, 'unitPrice', Number(e.target.value))}
-                      className={`${inputClass} pl-6 font-bold`}
+                      disabled={isOmaggio}
+                      className={`${inputClass} pl-6 font-bold` + (isOmaggio ? ' opacity-40' : '')}
                       title="Prezzo unitario"
                     />
                   </div>
 
-                  {/* FIX: Sconto per singolo item */}
-                  <div className="w-24 relative" title="Sconto su questa riga (€)">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-red-400 text-xs font-bold">-€</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.itemDiscount || ''}
-                      placeholder="0"
-                      onChange={(e) => updateService(item.id, 'itemDiscount', Number(e.target.value))}
-                      className={`${inputClass} pl-7 text-red-500`}
-                    />
-                  </div>
+                  {/* Sconto per singolo item — nascosto se omaggio */}
+                  {!isOmaggio && (
+                    <div className="w-20 relative flex-shrink-0" title="Sconto su questa riga (€)">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-red-400 text-xs font-bold">-€</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={item.itemDiscount || ''}
+                        placeholder="0"
+                        onChange={(e) => updateService(item.id, 'itemDiscount', Number(e.target.value))}
+                        className={`${inputClass} pl-6 text-red-500 text-xs`}
+                      />
+                    </div>
+                  )}
 
                   {/* Totale riga */}
-                  <div className="w-20 text-right text-xs font-bold text-[var(--text-primary)] whitespace-nowrap">
-                    €{lineTotal.toFixed(2)}
+                  <div className={`w-20 text-right text-xs font-bold whitespace-nowrap flex-shrink-0 ${
+                    isOmaggio ? 'text-emerald-600' : 'text-[var(--text-primary)]'
+                  }`}>
+                    {isOmaggio ? 'OMAGGIO' : `€${lineTotal.toFixed(2)}`}
                   </div>
 
+                  {/* Pulsante elimina */}
                   <button
                     onClick={() => removeService(item.id)}
-                    className="w-8 h-8 flex flex-shrink-0 items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                    className="w-7 h-7 flex flex-shrink-0 items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                   >
                     ✕
                   </button>
                 </div>
 
-                {/* Riga dettagli e note */}
-                <div className="pl-8 pr-10 w-full flex flex-col gap-2">
+                {/* Dettagli e note */}
+                <div className="pl-7 pr-8 w-full flex flex-col gap-1.5">
                   <textarea
                     value={item.details !== undefined ? item.details : ''}
                     onChange={(e) => updateService(item.id, 'details', e.target.value)}
-                    placeholder="Dettagli del servizio (es: Animatori per assistenza...)"
+                    placeholder="Dettagli del servizio (testo grigio nel PDF)..."
                     rows={1}
                     className={`${inputClass} resize-none text-xs text-gray-600`}
                   />
                   <textarea
                     value={item.notes || ''}
                     onChange={(e) => updateService(item.id, 'notes', e.target.value)}
-                    placeholder="Note aggiuntive per il PDF (es: MAX 28 BIMBI...)"
+                    placeholder="Note aggiuntive (testo blu nel PDF)..."
                     rows={1}
                     className={`${inputClass} resize-none text-xs text-blue-600`}
                   />
+                </div>
+
+                {/* Checkbox OMAGGIO — in basso a sinistra della card */}
+                <div className="pl-7">
+                  <label className={`inline-flex items-center gap-2 cursor-pointer select-none text-xs font-semibold rounded-lg px-2.5 py-1.5 transition ${
+                    isOmaggio
+                      ? 'text-emerald-700 bg-emerald-100'
+                      : 'text-gray-500 hover:bg-gray-100'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={isOmaggio}
+                      onChange={(e) => updateService(item.id, 'omaggio', e.target.checked)}
+                      className="accent-emerald-600 w-3.5 h-3.5"
+                    />
+                    🎁 Omaggio (prezzo → €0,00 sul PDF)
+                  </label>
                 </div>
               </Reorder.Item>
             );

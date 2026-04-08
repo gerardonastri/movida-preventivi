@@ -1,11 +1,12 @@
 import type { Quote, CompanySettings } from '../utils/types';
+import { LEGAL_CLOSING } from '../utils/types';
 
 interface PdfTemplateProps {
   quote: Quote;
   settings: CompanySettings;
 }
 
-// Interfaccia per compatibilità con vecchi dati che usano "description" invece di "details"
+// Compatibilità con preventivi salvati con il vecchio campo "description"
 interface LegacyService {
   description?: string;
   [key: string]: unknown;
@@ -19,14 +20,12 @@ const fmt = (n: number) =>
 const fmtDate = (iso: string) => {
   if (!iso) return '___/___/______';
   try {
-    return new Date(iso).toLocaleDateString('it-IT', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-    });
+    return new Date(iso).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
   } catch { return iso; }
 };
 
 const fmtDateLong = (iso: string) => {
-  if (!iso) return '___/___/______';
+  if (!iso) return '___________';
   try {
     return new Date(iso)
       .toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -34,57 +33,48 @@ const fmtDateLong = (iso: string) => {
   } catch { return iso; }
 };
 
-// ─── Costanti visive per i due tipi di documento ─────────────────────────────
+// ─── Colori per tipo documento (fedeli al template originale) ─────────────────
+// PREVENTIVO → accento rosso  (#cc0000 / Movida red)
+// CONTRATTO  → accento verde  (#1a7a1a)
 
-const THEME = {
+const ACCENT = {
   preventivo: {
-    headerBg:    '#1a1a2e',   // blu scuro quasi nero
-    headerText:  '#ffffff',
-    accentBg:    '#f0f4ff',   // sfondo tabella testate
-    accentBorder:'#1a1a2e',
-    badgeText:   'PREVENTIVO',
+    color: '#cc0000',        // rosso Movida
+    badgeText: 'PREVENTIVO',
     showValidity: true,
   },
   contratto: {
-    headerBg:    '#0d0d0d',   // nero puro
-    headerText:  '#ffffff',
-    accentBg:    '#fff8e7',   // leggermente ambrato per distinguerlo
-    accentBorder:'#0d0d0d',
-    badgeText:   'CONTRATTO',
+    color: '#1a7a1a',        // verde
+    badgeText: 'CONTRATTO',
     showValidity: false,
   },
 } as const;
 
-// ─── Stili inline puri — NO Tailwind, NO CSS vars, NO oklch ──────────────────
-// html2canvas non riesce a renderizzare variabili CSS o color spaces moderni.
+// ─── Stili puri inline — NO Tailwind, NO CSS vars, NO oklch ──────────────────
+// html2canvas non riesce a renderizzare CSS custom properties o color-spaces moderni.
 
 export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
-  const theme       = THEME[quote.documentType ?? 'preventivo'];
+  const accent      = ACCENT[quote.documentType ?? 'preventivo'];
+  const isBonifico  = quote.paymentMethod === 'bonifico';
 
-  const subtotal      = quote.services.reduce((acc, s) => acc + s.qty * s.unitPrice, 0);
-  const itemDiscounts = quote.services.reduce((acc, s) => acc + (s.itemDiscount || 0), 0);
+  const subtotal      = quote.services.reduce((acc, s) => acc + (s.omaggio ? 0 : s.qty * s.unitPrice), 0);
+  const itemDiscounts = quote.services.reduce((acc, s) => acc + (s.omaggio ? 0 : (s.itemDiscount || 0)), 0);
   const globalDiscount = quote.discount || 0;
-  const totalDiscount = globalDiscount + itemDiscounts;
-  const total         = subtotal - totalDiscount;
+  const totalDiscount  = globalDiscount + itemDiscounts;
+  const total          = subtotal - totalDiscount;
 
   const creationDate  = fmtDate(quote.createdAt);
   const eventDateLong = fmtDateLong(quote.client.date);
 
-  // Note: array selectedNotes + eventuale nota libera
+  // Note: checkbox selezionate + testo libero aggiuntivo
   const allNotes: string[] = [
     ...(quote.selectedNotes ?? []),
     ...(quote.notes?.trim() ? [quote.notes.trim()] : []),
   ];
 
-  // Indirizzo cliente da mostrare nel footer
-  const clientAddress = quote.client.address?.trim() || '_________________________________________________';
-
-  const invoiceText = settings.invoiceText ||
-    '* DA COMPILARE PER FATTURA ELETTRONICA: P.IVA/C.F. _____________________ CODICE SDI / PEC _____________________';
-
-  // Logo: usa base64 se disponibile, altrimenti il path locale
   const logoSrc = settings.logoBase64 || '/logo-preventivo.png';
 
+  // ── Layout shell ────────────────────────────────────────────────────────────
   return (
     <div
       id="pdf-template-container"
@@ -93,7 +83,7 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
         color: '#000000',
         width: '210mm',
         minHeight: '297mm',
-        padding: '10mm 14mm 12mm 14mm',
+        padding: '10mm 14mm 10mm 14mm',
         fontFamily: 'Arial, Helvetica, sans-serif',
         boxSizing: 'border-box',
         display: 'flex',
@@ -105,297 +95,423 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
 
       {/* ══════════════════════════════════════════════════════════════
           HEADER — logo + info azienda | badge documento
+          Fedele al template: tutto su sfondo bianco, solo il badge
+          ha il colore dell'accento (rosso/verde).
       ══════════════════════════════════════════════════════════════ */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: '12px',
+        marginBottom: '14px',
         paddingBottom: '10px',
-        borderBottom: `2px solid ${theme.headerBg}`,
+        borderBottom: '1.5px solid #cccccc',
       }}>
-        {/* Sinistra: logo + ragione sociale */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', width: '60%' }}>
-          <img
-            src={logoSrc}
-            alt="Logo"
-            crossOrigin="anonymous"
-            style={{ width: '80px', height: '80px', objectFit: 'contain', flexShrink: 0 }}
-          />
+
+        {/* ── Sinistra: logo circolare + nome + info ── */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', width: '58%' }}>
+
+          {/* Logo — circolare come nel template originale */}
+          <div style={{
+            width: '72px',
+            height: '72px',
+            borderRadius: '50%',
+            overflow: 'hidden',
+            flexShrink: 0,
+            border: '2px solid #e5e5e5',
+            backgroundColor: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <img
+              src={logoSrc}
+              alt="Logo"
+              crossOrigin="anonymous"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block',
+              }}
+            />
+          </div>
+
+          {/* Testi azienda */}
           <div style={{ paddingTop: '2px' }}>
-            <p style={{ fontWeight: '900', fontSize: '20px', margin: '0 0 1px 0', textTransform: 'uppercase', letterSpacing: '-0.3px' }}>
-              {settings.name}
-            </p>
-            <p style={{ fontWeight: 'bold', fontSize: '11px', margin: '0 0 7px 0', letterSpacing: '0.8px', color: '#444' }}>
-              ANIMAZIONE ED EVENTI
-            </p>
-            <div style={{ fontSize: '9px', lineHeight: '1.45', color: '#555' }}>
+            {/* Nome azienda — grassetto, con "in" in italic come nel template */}
+            <div style={{ marginBottom: '3px' }}>
+              <span style={{ fontWeight: '900', fontSize: '21px', textTransform: 'uppercase', letterSpacing: '-0.5px', color: '#000' }}>
+                Movida
+              </span>
+              <span style={{ fontWeight: '900', fontSize: '21px', fontStyle: 'italic', color: '#000' }}>
+                in
+              </span>
+              <span style={{ fontWeight: '900', fontSize: '21px', textTransform: 'uppercase', letterSpacing: '-0.5px', color: '#000' }}>
+                Tour
+              </span>
+            </div>
+
+            {/* Contatti principali — una riga */}
+            <div style={{ fontSize: '8.5px', color: '#333', marginBottom: '4px' }}>
+              Mobile {settings.phone.split('-')[0]?.trim() || settings.phone}
+              &nbsp;&nbsp;|&nbsp;&nbsp;
+              Office {settings.phone.split('-')[1]?.trim() || ''}
+              &nbsp;&nbsp;|&nbsp;&nbsp;
+              web {settings.website}
+              &nbsp;&nbsp;|&nbsp;&nbsp;
+              mail {settings.email}
+            </div>
+
+            {/* Indirizzi e dati fiscali */}
+            <div style={{ fontSize: '8px', color: '#555', lineHeight: '1.5' }}>
               <div>{settings.address}</div>
-              <div>Tel: {settings.phone}</div>
-              <div>Email: {settings.email} | Web: {settings.website}</div>
               <div>{settings.vat}</div>
             </div>
           </div>
         </div>
 
-        {/* Destra: badge tipo documento */}
-        <div style={{ width: '35%', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-          {/* "COPIA CLIENTE" in grigio sopra */}
-          <p style={{ fontSize: '9px', color: '#888', margin: '0', letterSpacing: '1px' }}>COPIA CLIENTE</p>
+        {/* ── Destra: "COPIA CLIENTE" + badge ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', paddingTop: '2px' }}>
+          <p style={{ fontSize: '9px', color: '#888', margin: '0', letterSpacing: '1px', fontWeight: 'bold' }}>
+            COPIA CLIENTE
+          </p>
 
-          {/* Badge principale */}
+          {/* Badge tipo documento — solo bordo colorato, sfondo bianco */}
           <div style={{
-            backgroundColor: theme.headerBg,
-            color: theme.headerText,
-            padding: '10px 14px',
+            border: `2px solid ${accent.color}`,
+            padding: '8px 16px',
             textAlign: 'center',
-            width: '100%',
-            borderRadius: '4px',
+            minWidth: '140px',
           }}>
-            <p style={{ fontWeight: '900', fontSize: '15px', margin: '0 0 4px 0', letterSpacing: '1.5px' }}>
-              {theme.badgeText}
+            <p style={{
+              fontWeight: '900',
+              fontSize: '14px',
+              margin: '0 0 3px 0',
+              letterSpacing: '1.5px',
+              color: accent.color,
+            }}>
+              {accent.badgeText}
             </p>
-            <p style={{ fontSize: '11px', margin: '0', opacity: 0.85 }}>
+            <p style={{ fontSize: '10px', margin: '0', color: '#333' }}>
               del {creationDate}
             </p>
-            {theme.showValidity && (
-              <p style={{ fontSize: '9px', fontWeight: 'bold', margin: '6px 0 0 0', opacity: 0.7, letterSpacing: '0.3px' }}>
-                VALIDITÀ DEL PREVENTIVO 10gg
+            {accent.showValidity && (
+              <p style={{
+                fontSize: '9px',
+                fontWeight: 'bold',
+                margin: '5px 0 0 0',
+                color: '#000',
+                letterSpacing: '0.2px',
+              }}>
+                Validità preventivo 10 gg
               </p>
             )}
           </div>
-
-          {/* ID documento */}
-          <p style={{ fontSize: '11px', fontWeight: 'bold', margin: '0', color: '#333' }}>
-            N° {quote.id}
-          </p>
         </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          INTESTAZIONE CLIENTE (sopra la tabella, come nel template)
+          DATI EVENTO — Ricorrenza | Data | Ora | Luogo
+          Fedele al template: etichette brevi + riga tratteggiata
+      ══════════════════════════════════════════════════════════════ */}
+      <div style={{ marginBottom: '10px', fontSize: '10px' }}>
+
+        {/* Ricorrenza */}
+        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '5px' }}>
+          <span style={{ fontWeight: 'bold', width: '90px', flexShrink: 0 }}>Ricorrenza</span>
+          <span style={{
+            borderBottom: '1px solid #999',
+            flex: 1,
+            minHeight: '14px',
+            paddingLeft: '4px',
+            fontWeight: 'bold',
+            textTransform: 'uppercase',
+          }}>
+            {quote.client.eventType || ''}
+          </span>
+        </div>
+
+        {/* Data + Ora — su due colonne */}
+        <div style={{ display: 'flex', gap: '20px', marginBottom: '5px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', flex: 1 }}>
+            <span style={{ fontWeight: 'bold', width: '44px', flexShrink: 0 }}>Data</span>
+            <span style={{
+              borderBottom: '1px solid #999',
+              flex: 1,
+              minHeight: '14px',
+              paddingLeft: '4px',
+              fontWeight: 'bold',
+            }}>
+              {eventDateLong}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', flex: 1 }}>
+            <span style={{ fontWeight: 'bold', width: '30px', flexShrink: 0 }}>Ora</span>
+            <span style={{
+              borderBottom: '1px solid #999',
+              flex: 1,
+              minHeight: '14px',
+              paddingLeft: '4px',
+              fontWeight: 'bold',
+            }}>
+              {quote.client.timeFrom && quote.client.timeTo
+                ? `${quote.client.timeFrom} — ${quote.client.timeTo}`
+                : quote.client.timeFrom || ''}
+            </span>
+          </div>
+        </div>
+
+        {/* Luogo */}
+        <div style={{ display: 'flex', alignItems: 'baseline' }}>
+          <span style={{ fontWeight: 'bold', width: '90px', flexShrink: 0 }}>Luogo</span>
+          <span style={{
+            borderBottom: '1px solid #999',
+            flex: 1,
+            minHeight: '14px',
+            paddingLeft: '4px',
+            fontWeight: 'bold',
+            textTransform: 'uppercase',
+          }}>
+            {quote.client.location || ''}
+          </span>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════
+          TABELLA SERVIZI
       ══════════════════════════════════════════════════════════════ */}
       <div style={{
-        border: `1px solid ${theme.accentBorder}`,
-        padding: '8px 12px',
-        marginBottom: '12px',
-        fontSize: '10px',
-        lineHeight: '1.8',
-        backgroundColor: theme.accentBg,
+        flex: 1,
+        border: '1px solid #cccccc',
+        marginBottom: '10px',
       }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <span style={{ fontWeight: 'bold', minWidth: '80px' }}>INTESTAZIONE:</span>
-          <span style={{ fontWeight: 'bold' }}>
-            {quote.client.name
-              ? `${quote.client.name.toUpperCase()} | CELL ${quote.client.phone || '_____________'}`
-              : '____________________________________ | CELL _____________'}
-          </span>
-        </div>
-        {/* C.F. / P.IVA cliente — dalla nota invoiceText */}
-        <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
-          {invoiceText}
-        </div>
-        <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
-          <span style={{ fontWeight: 'bold', minWidth: '80px' }}>INDIRIZZO</span>
-          <span>{clientAddress}</span>
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════════
-          DATI EVENTO
-      ══════════════════════════════════════════════════════════════ */}
-      <div style={{
-        border: `1px solid #cccccc`,
-        padding: '8px 12px',
-        marginBottom: '12px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '5px',
-        fontSize: '10px',
-      }}>
-        <div style={{ display: 'flex' }}>
-          <span style={{ fontWeight: 'bold', width: '80px' }}>ricorrenza</span>
-          <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
-            {quote.client.eventType || '___________________________________'}
-          </span>
-        </div>
-        <div style={{ display: 'flex' }}>
-          <span style={{ fontWeight: 'bold', width: '80px' }}>In data</span>
-          <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
-            {eventDateLong}
-            {quote.client.timeFrom ? ` dalle ${quote.client.timeFrom}` : ''}
-            {quote.client.timeTo   ? ` alle ${quote.client.timeTo}` : ''}
-          </span>
-        </div>
-        <div style={{ display: 'flex' }}>
-          <span style={{ fontWeight: 'bold', width: '80px' }}>Location</span>
-          <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
-            {quote.client.location || '___________________________________'}
-          </span>
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════════
-          TABELLA SERVIZI — parte centrale invariata
-      ══════════════════════════════════════════════════════════════ */}
-      <div style={{ flex: 1 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '10px' }}>
-          <thead>
-            <tr>
-              <th style={{
-                borderBottom: `2px solid ${theme.accentBorder}`,
-                padding: '6px 0',
-                textAlign: 'left',
-                fontSize: '10px',
-                backgroundColor: theme.accentBg,
-                paddingLeft: '4px',
-              }}>
-                DESCRIZIONE SERVIZIO / ALLESTIMENTO
-              </th>
-              <th style={{
-                borderBottom: `2px solid ${theme.accentBorder}`,
-                padding: '6px 0',
-                textAlign: 'right',
-                fontSize: '10px',
-                width: '110px',
-                backgroundColor: theme.accentBg,
-              }}>
-                {quote.promoLocale ? '' : 'IMPORTO'}
-              </th>
-            </tr>
-          </thead>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <colgroup>
+            <col style={{ width: 'auto' }} />
+            <col style={{ width: quote.promoLocale ? '0' : '100px' }} />
+          </colgroup>
           <tbody>
-            {quote.services.map((s, i) => {
-              // Compatibilità: alcuni preventivi vecchi usano "description" invece di "details"
-              const detailsText = s.details !== undefined
-                ? s.details
-                : (s as unknown as LegacyService).description;
+            {quote.services.length === 0 ? (
+              /* Cella vuota con X decorativa se non ci sono servizi — come nel template */
+              <tr>
+                <td colSpan={2} style={{
+                  height: '180px',
+                  verticalAlign: 'middle',
+                  textAlign: 'center',
+                  color: '#ccc',
+                  fontSize: '11px',
+                  letterSpacing: '1px',
+                }}>
+                  — nessun servizio inserito —
+                </td>
+              </tr>
+            ) : (
+              quote.services.map((s, i) => {
+                const detailsText = s.details !== undefined
+                  ? s.details
+                  : (s as unknown as LegacyService).description;
 
-              const lineSubtotal = s.qty * s.unitPrice;
-              const lineDiscount = s.itemDiscount || 0;
-              const lineTotal    = lineSubtotal - lineDiscount;
+                const isOmaggio   = !!s.omaggio;
+                const lineSubtotal = isOmaggio ? 0 : s.qty * s.unitPrice;
+                const lineDiscount = isOmaggio ? 0 : (s.itemDiscount || 0);
+                const lineTotal    = lineSubtotal - lineDiscount;
 
-              return (
-                <tr key={i}>
-                  <td style={{ borderBottom: '1px solid #e5e7eb', padding: '10px 0 10px 4px', verticalAlign: 'top' }}>
-                    <div style={{ fontWeight: '900', fontSize: '10.5px', textTransform: 'uppercase', color: '#000' }}>
-                      {s.qty > 1 ? `${s.qty}X ` : ''}{s.name}
-                    </div>
-                    {detailsText && (
-                      <div style={{ fontSize: '8.5px', color: '#6b7280', marginTop: '3px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
-                        {detailsText}
+                return (
+                  <tr key={i} style={{ borderBottom: i < quote.services.length - 1 ? '1px solid #eeeeee' : 'none' }}>
+
+                    {/* Colonna descrizione */}
+                    <td style={{ padding: '9px 8px 9px 10px', verticalAlign: 'top' }}>
+
+                      {/* Nome servizio */}
+                      <div style={{
+                        fontWeight: '900',
+                        fontSize: '10.5px',
+                        textTransform: 'uppercase',
+                        color: '#000',
+                        textDecoration: isOmaggio ? 'none' : 'none',
+                      }}>
+                        {s.qty > 1 ? `${s.qty}X ` : ''}
+                        {s.name}
+                        {isOmaggio && (
+                          <span style={{
+                            marginLeft: '8px',
+                            fontSize: '8px',
+                            fontWeight: 'bold',
+                            color: '#15803d',
+                            backgroundColor: '#dcfce7',
+                            padding: '1px 5px',
+                            borderRadius: '3px',
+                            letterSpacing: '0.5px',
+                          }}>
+                            OMAGGIO
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {s.notes && (
-                      <div style={{ fontSize: '8.5px', color: '#4b6584', marginTop: '2px', whiteSpace: 'pre-wrap', textTransform: 'uppercase' }}>
-                        {s.notes}
-                      </div>
-                    )}
-                    {lineDiscount > 0 && (
-                      <div style={{ fontSize: '8.5px', color: '#dc2626', marginTop: '2px', fontWeight: 'bold' }}>
-                        SCONTO: - {fmt(lineDiscount)} €
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ borderBottom: '1px solid #e5e7eb', padding: '10px 0', fontSize: '11px', textAlign: 'right', verticalAlign: 'top', fontWeight: 'bold' }}>
-                    {/* Se promo locale → niente importi */}
-                    {quote.promoLocale ? (
-                      <span style={{ fontSize: '9px', color: '#ea580c', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-                        PROMO LOCALE
-                      </span>
-                    ) : lineDiscount > 0 ? (
-                      <div>
-                        <div style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '9px' }}>
-                          {fmt(lineSubtotal)} €
+
+                      {/* Dettagli (grigio) */}
+                      {detailsText && (
+                        <div style={{
+                          fontSize: '8.5px',
+                          color: '#6b7280',
+                          marginTop: '3px',
+                          whiteSpace: 'pre-wrap',
+                          textTransform: 'uppercase',
+                          lineHeight: '1.4',
+                        }}>
+                          {detailsText}
                         </div>
-                        <div>{fmt(lineTotal)} €</div>
-                      </div>
-                    ) : (
-                      `${fmt(lineTotal)} €`
+                      )}
+
+                      {/* Note operative (blu) */}
+                      {s.notes && (
+                        <div style={{
+                          fontSize: '8.5px',
+                          color: '#1d4ed8',
+                          marginTop: '2px',
+                          whiteSpace: 'pre-wrap',
+                          textTransform: 'uppercase',
+                          lineHeight: '1.4',
+                        }}>
+                          {s.notes}
+                        </div>
+                      )}
+
+                      {/* Sconto riga (rosso) */}
+                      {lineDiscount > 0 && (
+                        <div style={{ fontSize: '8.5px', color: '#dc2626', marginTop: '2px', fontWeight: 'bold' }}>
+                          SCONTO: - {fmt(lineDiscount)} €
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Colonna importo */}
+                    {!quote.promoLocale && (
+                      <td style={{
+                        padding: '9px 10px 9px 0',
+                        fontSize: '11px',
+                        textAlign: 'right',
+                        verticalAlign: 'top',
+                        fontWeight: 'bold',
+                        borderLeft: '1px solid #eeeeee',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {isOmaggio ? (
+                          <span style={{ color: '#15803d', fontSize: '10px' }}>€ 0,00</span>
+                        ) : lineDiscount > 0 ? (
+                          <div>
+                            <div style={{ textDecoration: 'line-through', color: '#aaa', fontSize: '9px', fontWeight: 'normal' }}>
+                              {fmt(lineSubtotal)} €
+                            </div>
+                            <div>€ {fmt(lineTotal)}</div>
+                          </div>
+                        ) : (
+                          `€ ${fmt(lineTotal)}`
+                        )}
+                      </td>
                     )}
-                  </td>
-                </tr>
-              );
-            })}
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          FOOTER — pagamento | totali | firma
+          FOOTER — intestazione cliente | totali | firma
+          Fedele al template originale
       ══════════════════════════════════════════════════════════════ */}
       <div style={{
-        marginTop: 'auto',
+        borderTop: '2px solid #000',
+        paddingTop: '10px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        borderTop: `2px solid ${theme.accentBorder}`,
-        paddingTop: '12px',
         gap: '20px',
       }}>
 
-        {/* ── Colonna sinistra: cliente + pagamento ── */}
-        <div style={{ width: '55%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* ── Colonna sinistra ── */}
+        <div style={{ width: '54%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+          {/* Intestazione cliente */}
+          <div style={{ fontSize: '9.5px', lineHeight: '1.65' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '10px', marginBottom: '3px' }}>INTESTAZIONE:</div>
+            <div>
+              <span style={{ fontWeight: 'bold' }}>
+                {quote.client.name
+                  ? quote.client.name.toUpperCase()
+                  : 'NOME COGNOME'}
+              </span>
+              {' | CELL '}
+              <span style={{ fontWeight: 'bold' }}>{quote.client.phone || '___________'}</span>
+            </div>
+            {/* C.F. / P.IVA — per fattura elettronica */}
+            <div style={{ fontSize: '9px', color: '#444' }}>
+              {settings.invoiceText ||
+                'C.F. _______________ | P.IVA _______________'}
+            </div>
+            <div>
+              <span style={{ fontWeight: 'bold' }}>INDIRIZZO</span>{' '}
+              {quote.client.address || '_________________________________________________'}
+            </div>
+          </div>
 
           {/* Modalità di pagamento */}
-          <div style={{ fontSize: '10px', lineHeight: '1.7' }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-              MODALITÀ DI PAGAMENTO
+          <div style={{ fontSize: '9.5px' }}>
+            <div style={{ fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '0.3px' }}>
+              MODALITA&apos; DI PAGAMENTO
             </div>
 
-            {/* Se promo locale — messaggio speciale */}
             {quote.promoLocale ? (
               <div style={{
                 border: '1.5px solid #ea580c',
-                borderRadius: '4px',
-                padding: '6px 10px',
-                backgroundColor: '#fff7ed',
-                fontSize: '10px',
+                padding: '5px 10px',
+                fontSize: '9.5px',
                 color: '#c2410c',
                 fontWeight: 'bold',
+                backgroundColor: '#fff7ed',
               }}>
                 PROMO LOCALE — Pagamento diretto alla struttura
               </div>
             ) : (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
+                {/* Checkbox CONTANTI */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px' }}>
                   <div style={{
                     border: '1.5px solid #000',
-                    width: '12px',
-                    height: '12px',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    fontWeight: 'bold',
-                    fontSize: '10px',
-                    flexShrink: 0,
+                    width: '12px', height: '12px',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center',
+                    fontWeight: 'bold', fontSize: '10px', flexShrink: 0,
                   }}>
                     {quote.paymentMethod === 'contanti' ? 'X' : ''}
                   </div>
-                  <span>CONTANTI A FINE EVENTO</span>
+                  <span>CONTANTI</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+
+                {/* Checkbox BONIFICIO */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
                   <div style={{
                     border: '1.5px solid #000',
-                    width: '12px',
-                    height: '12px',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    fontWeight: 'bold',
-                    fontSize: '10px',
-                    flexShrink: 0,
+                    width: '12px', height: '12px',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center',
+                    fontWeight: 'bold', fontSize: '10px', flexShrink: 0,
                   }}>
-                    {quote.paymentMethod === 'bonifico' ? 'X' : ''}
+                    {isBonifico ? 'X' : ''}
                   </div>
                   <span>BONIFICIO</span>
                 </div>
-                <div style={{ fontSize: '9px', color: '#555' }}>
-                  <span style={{ fontWeight: 'bold' }}>N.B I PREZZI SI INTENDONO IVA 22% ESCLUSA</span>
-                </div>
-                <div style={{ marginTop: '6px', fontSize: '9px', color: '#444' }}>
-                  <div style={{ fontWeight: 'bold' }}>BONIFICO BANCA INTESA</div>
-                  <div>IBAN: {settings.iban}</div>
+
+                {/* Dati bancari — solo se bonifico */}
+                {isBonifico && (
+                  <div style={{ fontSize: '8.5px', color: '#333', marginTop: '2px' }}>
+                    <div style={{ fontWeight: 'bold' }}>BONIFICO BANCA INTESA</div>
+                    <div>IBAN {settings.iban}</div>
+                  </div>
+                )}
+
+                {/* N.B. IVA */}
+                <div style={{ fontSize: '8px', color: '#555', marginTop: '6px', fontWeight: 'bold' }}>
+                  N.B I PREZZI SI INTENDONO IVA 22% ESCLUSA
                 </div>
               </>
             )}
@@ -403,18 +519,16 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
 
           {/* Note a piè di pagina */}
           {allNotes.length > 0 && (
-            <div style={{ fontSize: '8px', lineHeight: '1.6', color: '#444', marginTop: '2px' }}>
+            <div style={{ fontSize: '7.5px', lineHeight: '1.6', color: '#444' }}>
               {allNotes.map((n, i) => (
-                <div key={i} style={{ marginBottom: '1px' }}>
-                  • {n}
-                </div>
+                <div key={i} style={{ marginBottom: '1px' }}>• {n}</div>
               ))}
             </div>
           )}
         </div>
 
-        {/* ── Colonna destra: totali + firma ── */}
-        <div style={{ width: '42%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* ── Colonna destra: box totali + firma ── */}
+        <div style={{ width: '42%', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           {/* Box totali — nascosto se promo locale */}
           {quote.promoLocale ? (
@@ -422,10 +536,9 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
               border: '2px solid #ea580c',
               padding: '14px',
               textAlign: 'center',
-              borderRadius: '4px',
               backgroundColor: '#fff7ed',
             }}>
-              <p style={{ fontWeight: '900', fontSize: '16px', color: '#c2410c', margin: '0', letterSpacing: '1px' }}>
+              <p style={{ fontWeight: '900', fontSize: '15px', color: '#c2410c', margin: '0', letterSpacing: '1px' }}>
                 PROMO LOCALE
               </p>
               <p style={{ fontSize: '9px', color: '#9a3412', margin: '4px 0 0 0' }}>
@@ -433,65 +546,76 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
               </p>
             </div>
           ) : (
-            <div style={{ border: `2px solid ${theme.accentBorder}`, padding: '12px', fontSize: '11px' }}>
-              {/* Subtotale */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span>Totale compenso</span>
-                <span>{fmt(subtotal)} €</span>
+            <div style={{ border: '2px solid #000', padding: '10px 12px', fontSize: '10.5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <span>TOTALE</span>
+                <span style={{ fontWeight: 'bold' }}>€ {fmt(subtotal)}</span>
               </div>
 
-              {/* Sconti su singole righe */}
               {itemDiscounts > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: '#dc2626', fontSize: '9.5px' }}>
                   <span>Sconti su servizi</span>
-                  <span>- {fmt(itemDiscounts)} €</span>
+                  <span>- € {fmt(itemDiscounts)}</span>
                 </div>
               )}
 
-              {/* Sconto globale */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 'bold' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                 <span>SCONTO RISERVATO</span>
-                <span>{fmt(globalDiscount)} €</span>
+                <span style={{ fontWeight: 'bold' }}>€ {fmt(globalDiscount)}</span>
               </div>
 
-              {/* Acconto */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span>Acconto</span>
-                <span>0,00 €</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <span>ACCONTO</span>
+                <span style={{ fontWeight: 'bold' }}>€10,00</span>
               </div>
 
-              {/* SALDO — riga finale in grassetto */}
+              {/* Riga SALDO — in rosso/accent come nel template */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 marginTop: '8px',
-                paddingTop: '8px',
-                borderTop: `1.5px solid ${theme.accentBorder}`,
+                paddingTop: '7px',
+                borderTop: '1.5px solid #000',
                 fontWeight: '900',
-                fontSize: '14px',
+                fontSize: '13px',
+                color: accent.color,
               }}>
-                <span>Saldo</span>
-                <span>{fmt(total)} €</span>
+                <span>SALDO</span>
+                <span>€ {fmt(total)}</span>
               </div>
             </div>
           )}
 
           {/* Firma per accettazione */}
           <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '9.5px', fontWeight: 'bold', margin: '0 0 30px 0', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            <p style={{
+              fontSize: '9px',
+              fontWeight: 'bold',
+              margin: '0 0 28px 0',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
               PER ACCETTAZIONE
             </p>
-            <div style={{ borderBottom: `1px solid ${theme.accentBorder}`, width: '85%', margin: '0 auto' }} />
+            <div style={{ borderBottom: '1px solid #000', width: '90%', margin: '0 auto' }} />
           </div>
         </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          DISCLAIMER FINALE
+          SCRITTA LEGALE FINALE — sempre presente su ogni documento
       ══════════════════════════════════════════════════════════════ */}
-      <div style={{ textAlign: 'center', fontSize: '7.5px', fontWeight: 'bold', marginTop: '12px', color: '#666', letterSpacing: '0.2px' }}>
-        DOCUMENTO VALIDO SOLO SE DEBITAMENTE COMPILATO OVE NECESSARIO — FIRMATO E REINVIATO AL{' '}
-        {settings.phone.includes('-') ? settings.phone.split('-')[1]?.trim() : settings.phone}
+      <div style={{
+        marginTop: '10px',
+        paddingTop: '7px',
+        borderTop: '1px solid #dddddd',
+        textAlign: 'center',
+        fontSize: '7.5px',
+        color: '#555',
+        lineHeight: '1.5',
+        fontStyle: 'italic',
+      }}>
+        {LEGAL_CLOSING}
       </div>
     </div>
   );

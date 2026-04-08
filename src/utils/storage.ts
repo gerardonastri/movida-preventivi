@@ -9,27 +9,14 @@ const CATALOG_API_KEY = 'preventivi_catalog_api';
 const CATALOG_API_TIMESTAMP_KEY = 'preventivi_catalog_api_timestamp';
 const LOCATIONS_KEY = 'preventivi_locations';
 
-// TTL cache catalogo: 24 ore
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
 const CATALOG_API_URL = 'https://www.movidaintour.it/_functions/catalogo';
 
-/**
- * FIX CORS — lista di proxy in cascata.
- * Il browser non può chiamare direttamente movidaintour.it perché il server
- * Wix non restituisce l'header Access-Control-Allow-Origin.
- * Postman funziona perché non applica CORS.
- *
- * Strategia: proviamo i proxy uno alla volta con timeout breve (6s ciascuno).
- * Il primo che risponde vince. Se tutti falliscono → cache o default.
- */
 const CORS_PROXIES: Array<(url: string) => { proxyUrl: string; extract: (r: Response) => Promise<string> }> = [
-  // corsproxy.io — risponde direttamente con il body originale
   (url) => ({
     proxyUrl: `https://corsproxy.io/?${encodeURIComponent(url)}`,
     extract: (r) => r.text(),
   }),
-  // allorigins.win — wrappa in { contents: "..." }
   (url) => ({
     proxyUrl: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     extract: async (r) => {
@@ -37,7 +24,6 @@ const CORS_PROXIES: Array<(url: string) => { proxyUrl: string; extract: (r: Resp
       return (json.contents as string) ?? '';
     },
   }),
-  // thingproxy — risponde direttamente
   (url) => ({
     proxyUrl: `https://thingproxy.freeboard.io/fetch/${url}`,
     extract: (r) => r.text(),
@@ -86,7 +72,7 @@ export function consumeQuoteId(): void {
 }
 
 // ---------------------------------------------------------------------------
-// EMPTY QUOTE
+// EMPTY QUOTE — nessuna nota predefinita
 // ---------------------------------------------------------------------------
 
 export function getEmptyQuote(): Omit<Quote, 'id' | 'createdAt'> {
@@ -94,10 +80,12 @@ export function getEmptyQuote(): Omit<Quote, 'id' | 'createdAt'> {
     client: { name: '', address: '', phone: '', eventType: '', location: '', date: '', timeFrom: '', timeTo: '' },
     services: [],
     discount: 0,
-    notes: 'Autorizzazione utilizzo parco a cura del cliente.',
+    selectedNotes: [],   // nessuna nota preselezionata
+    notes: '',           // nessun testo libero predefinito
     status: 'draft',
     documentType: 'preventivo',
     paymentMethod: 'contanti',
+    promoLocale: false,
   };
 }
 
@@ -121,8 +109,7 @@ export function getSettings(): CompanySettings {
     website: 'www.movidaintour.it',
     iban: 'IT59 5030 6915 2161 0000 0013 015',
     logoBase64: '',
-    invoiceText:
-      'Da compilare per richiesta fattura elettronica: P.IVA/C.F. _____________________ Codice SDI / PEC _____________________',
+    invoiceText: 'DA COMPILARE PER FATTURA ELETTRONICA: P.IVA/C.F. _____________________ CODICE SDI / PEC _____________________',
   };
 }
 
@@ -131,25 +118,17 @@ export function saveSettings(settings: CompanySettings): void {
 }
 
 // ---------------------------------------------------------------------------
-// LOCATIONS — salvate in locale, proposte come autocomplete
+// LOCATIONS
 // ---------------------------------------------------------------------------
 
 export function getSavedLocations(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(LOCATIONS_KEY) || '[]');
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(LOCATIONS_KEY) || '[]'); } catch { return []; }
 }
 
-/**
- * Salva una location nella cronologia locale se non è già presente.
- * Manteniamo max 50 voci, le più recenti in cima.
- */
 export function saveLocation(location: string): void {
   if (!location.trim()) return;
   const normalized = location.trim().toUpperCase();
-  const locs = getSavedLocations().filter(l => l !== normalized); // rimuovi duplicati
+  const locs = getSavedLocations().filter(l => l !== normalized);
   locs.unshift(normalized);
   localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locs.slice(0, 50)));
 }
@@ -160,7 +139,7 @@ export function deleteLocation(location: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// CATALOG — API MAPPING
+// CATALOG — MAPPING
 // ---------------------------------------------------------------------------
 
 function parseWixPrice(raw: string | undefined): number {
@@ -207,9 +186,7 @@ function isCacheValid(): boolean {
     const ts = localStorage.getItem(CATALOG_API_TIMESTAMP_KEY);
     if (!ts) return false;
     return Date.now() - parseInt(ts, 10) < CATALOG_CACHE_TTL_MS;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 function readApiCache(): CatalogItem[] | null {
@@ -217,9 +194,7 @@ function readApiCache(): CatalogItem[] | null {
     const raw = localStorage.getItem(CATALOG_API_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as CatalogItem[];
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function writeApiCache(items: CatalogItem[]): void {
@@ -232,7 +207,7 @@ function writeApiCache(items: CatalogItem[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// CATALOG — FETCH con cascade proxy
+// CATALOG — PUBLIC
 // ---------------------------------------------------------------------------
 
 export function getCatalogItems(): CatalogItem[] {
@@ -251,45 +226,25 @@ export function saveCatalogItems(items: CatalogItem[]): void {
   localStorage.setItem(CATALOG_KEY, JSON.stringify(items));
 }
 
-/**
- * Tenta di raggiungere l'API tramite i proxy in cascata.
- * Ogni proxy ha 6 secondi di timeout. Se fallisce passa al successivo.
- * Ritorna il testo grezzo oppure null se tutti falliscono.
- */
 async function fetchViaProxy(): Promise<string | null> {
   for (let i = 0; i < CORS_PROXIES.length; i++) {
     const buildProxy = CORS_PROXIES[i];
     const { proxyUrl, extract } = buildProxy(CATALOG_API_URL);
-
     try {
       console.log(`[Catalog] Proxy ${i + 1}/${CORS_PROXIES.length}: ${proxyUrl}`);
-
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
-
       const response = await fetch(proxyUrl, { signal: controller.signal });
       clearTimeout(timer);
-
-      if (!response.ok) {
-        console.warn(`[Catalog] Proxy ${i + 1} HTTP ${response.status}`);
-        continue;
-      }
-
+      if (!response.ok) { console.warn(`[Catalog] Proxy ${i + 1} HTTP ${response.status}`); continue; }
       const text = await extract(response);
-
-      if (!text || text.trim() === '') {
-        console.warn(`[Catalog] Proxy ${i + 1} risposta vuota`);
-        continue;
-      }
-
+      if (!text || text.trim() === '') { console.warn(`[Catalog] Proxy ${i + 1} risposta vuota`); continue; }
       console.log(`[Catalog] Proxy ${i + 1} OK — ${text.length} byte`);
       return text;
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      console.warn(`[Catalog] Proxy ${i + 1} fallito: ${reason}`);
+      console.warn(`[Catalog] Proxy ${i + 1} fallito: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-
   console.error('[Catalog] Tutti i proxy hanno fallito.');
   return null;
 }
@@ -299,7 +254,6 @@ export async function fetchCatalogFromApi(force = false): Promise<{
   source: 'api' | 'cache' | 'local';
   updatedAt: Date | null;
 }> {
-  // Usa la cache se è ancora valida e non è un refresh forzato
   if (!force && isCacheValid()) {
     const cached = readApiCache();
     if (cached && cached.length > 0) {
@@ -309,15 +263,12 @@ export async function fetchCatalogFromApi(force = false): Promise<{
   }
 
   const rawText = await fetchViaProxy();
-
   if (rawText) {
     try {
       const data = JSON.parse(rawText);
       if (!Array.isArray(data)) throw new Error('Risposta non è un array');
-
       const items = mapApiResponse(data as unknown[][]);
       if (items.length === 0) throw new Error('Array vuoto dopo mapping');
-
       writeApiCache(items);
       return { items, source: 'api', updatedAt: new Date() };
     } catch (parseErr) {
@@ -325,25 +276,19 @@ export async function fetchCatalogFromApi(force = false): Promise<{
     }
   }
 
-  // Fallback: cache scaduta o default locale
   const cached = readApiCache();
   if (cached && cached.length > 0) {
     const ts = localStorage.getItem(CATALOG_API_TIMESTAMP_KEY);
     return { items: cached, source: 'cache', updatedAt: ts ? new Date(parseInt(ts, 10)) : null };
   }
-
   return { items: defaultCatalog as CatalogItem[], source: 'local', updatedAt: null };
 }
 
-export function isCatalogCacheStale(): boolean {
-  return !isCacheValid();
-}
+export function isCatalogCacheStale(): boolean { return !isCacheValid(); }
 
 export function getCatalogLastSync(): Date | null {
   try {
     const ts = localStorage.getItem(CATALOG_API_TIMESTAMP_KEY);
     return ts ? new Date(parseInt(ts, 10)) : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
