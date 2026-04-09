@@ -61,7 +61,6 @@ export interface CompanySettings {
 
 // ─── Note a piè di pagina ────────────────────────────────────────────────────
 export const DEFAULT_FOOTER_NOTES: string[] = [
-  'IN ORDINE DI IMPORTANZA',
   'ONERI SIAE A CARICO DEL CLIENTE/STRUTTURA',
   'DURANTE LA CERIMONIA LE ATTIVITÀ DI ANIMAZIONE, CONTROLLO E ASSISTENZA VERRANNO GARANTITE SOLO AI BAMBINI DAI 3 ANNI IN SU',
   'IL MENÙ BAMBINI PER GLI ANIMATORI È A CARICO DEL CLIENTE',
