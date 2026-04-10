@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
@@ -31,9 +30,26 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Questa opzione è fondamentale: mette in cache tutti i file generati da Vite
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
+        // Mette in cache tutti i file generati da Vite
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff,ttf}'],
+        
+        // --- RISOLUZIONE ERRORE VERCEL ---
+        // Aumenta il limite di caching per singolo file a 4 MB (il default è 2 MB)
+        maximumFileSizeToCacheInBytes: 4194304 
       }
     })
-  ]
+  ],
+  // --- OTTIMIZZAZIONE PERFORMANCE ---
+  build: {
+    rollupOptions: {
+      output: {
+        // Divide le librerie (node_modules) dal tuo codice per evitare file JS troppo grandi
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
 });
