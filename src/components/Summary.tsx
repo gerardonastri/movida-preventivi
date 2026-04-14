@@ -35,9 +35,25 @@ export default function Summary({
 }: SummaryProps) {
   const [notesOpen, setNotesOpen] = useState(false);
 
-  const subtotal      = services.reduce((acc, s) => acc + s.qty * s.unitPrice, 0);
-  const itemDiscounts = services.reduce((acc, s) => acc + (s.itemDiscount || 0), 0);
-  const total         = subtotal - discount - itemDiscounts;
+  // 1. Scansione Omaggio: Controlla se c'è la parola "omaggio"
+  const checkOmaggio = (s: QuoteService) => {
+    const textToSearch = `${s.name} ${s.details || ''} ${s.notes || ''}`.toLowerCase();
+    return s.omaggio || /\bomaggio\b/i.test(textToSearch);
+  };
+
+  // 2. Subtotale pulito: Se la riga è in omaggio, aggiunge letteralmente 0€ al subtotale
+  const subtotal = services.reduce((acc, s) => {
+    if (checkOmaggio(s)) return acc; 
+    return acc + (s.qty * s.unitPrice);
+  }, 0);
+
+  // 3. Sconti su riga: Ignora le righe in omaggio per non creare doppi sconti sfalsati
+  const itemDiscounts = services.reduce((acc, s) => {
+    if (checkOmaggio(s)) return acc; 
+    return acc + (s.itemDiscount || 0);
+  }, 0);
+
+  const total = subtotal - discount - itemDiscounts;
 
   // Toggle singola nota nel checkbox
   function toggleNote(note: string) {

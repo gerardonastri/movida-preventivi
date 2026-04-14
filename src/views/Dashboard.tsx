@@ -12,8 +12,14 @@ interface DashboardProps {
 
 // Calcola il totale reale di un preventivo (sconto globale + sconti per item)
 function calcTotal(quote: Quote): number {
-  const subtotal = quote.services.reduce((sum, s) => sum + s.qty * s.unitPrice, 0);
-  const itemDiscounts = quote.services.reduce((sum, s) => sum + (s.itemDiscount || 0), 0);
+  const subtotal = quote.services.reduce((sum, s) => {
+    if (s.omaggio) return sum;
+    return sum + s.qty * s.unitPrice;
+  }, 0);
+  const itemDiscounts = quote.services.reduce((sum, s) => {
+    if (s.omaggio) return sum;
+    return sum + (s.itemDiscount || 0);
+  }, 0);
   return subtotal - (quote.discount || 0) - itemDiscounts;
 }
 

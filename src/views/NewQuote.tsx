@@ -1,3 +1,14 @@
+/**
+ * NewQuote.tsx
+ *
+ * Regole:
+ * - Il salvataggio avviene SOLO su azione esplicita dell'utente (clic "Salva",
+ *   cambio status, o Export). Nessun autosave.
+ * - L'ID atomico Supabase viene richiesto al primo salvataggio, non prima.
+ * - Il PdfTemplate è SEMPRE nel DOM (position:fixed fuori viewport) → il font
+ *   base64 è già caricato quando l'utente clicca Esporta → export veloce.
+ */
+
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import html2pdf from 'html2pdf.js';
@@ -9,68 +20,74 @@ interface Html2PdfOptions {
   html2canvas: { scale: number; useCORS: boolean; backgroundColor: string };
   jsPDF: { unit: string; format: string; orientation: string };
 }
-
 interface Html2PdfInstance {
   set: (options: Html2PdfOptions) => Html2PdfInstance;
   from: (element: HTMLElement) => Html2PdfInstance;
   save: () => Promise<void>;
   outputImg: (type: string) => Promise<string>;
 }
+interface Html2PdfStatic { (): Html2PdfInstance; }
 
-interface Html2PdfStatic {
-  (): Html2PdfInstance;
-}
-
-import ClientForm from '../components/ClientForm';
+import ClientForm   from '../components/ClientForm';
 import ServicesList from '../components/ServicesList';
-import Summary from '../components/Summary';
-import PdfTemplate from '../components/PdfTemplate';
-import Toast from '../components/Toast';
+import Summary      from '../components/Summary';
+import PdfTemplate  from '../components/PdfTemplate';
+import Toast        from '../components/Toast';
 
-import { getEmptyQuote, getNextQuoteId, consumeQuoteId, getSettings } from '../utils/storage';
+import {
+  getEmptyQuote,
+  getNextQuoteId,
+  consumeQuoteId,
+  getSettings,
+} from '../utils/storage';
+import { dbNextQuoteId } from '../utils/db';
 import type { Quote } from '../utils/types';
 
 interface NewQuoteProps {
   initialQuote: Quote | null;
-  onSave: (quote: Quote) => void;
-  onBack: () => void;
+  onSave:       (quote: Quote) => void;
+  onBack:       () => void;
 }
 
 const STATUS_LABELS: Record<Quote['status'], string> = {
-  draft: '✏️ Bozza',
-  sent: '📤 Inviato',
+  draft:     '✏️ Bozza',
+  sent:      '📤 Inviato',
   confirmed: '✅ Confermato',
 };
 
 const STATUS_STYLES: Record<Quote['status'], string> = {
-  draft: 'bg-gray-100 text-gray-600 border-gray-200',
-  sent: 'bg-blue-50 text-blue-700 border-blue-200',
+  draft:     'bg-gray-100 text-gray-600 border-gray-200',
+  sent:      'bg-blue-50 text-blue-700 border-blue-200',
   confirmed: 'bg-green-50 text-green-700 border-green-200',
 };
 
 export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [toastMessage, setToastMessage] = useState({ text: '', visible: false, type: 'success' as 'success' | 'info' });
-  const settings = getSettings();
-
+  const [isSaving,        setIsSaving]        = useState(false);
+  const [toastMessage,    setToastMessage]    = useState({
+    text: '', visible: false, type: 'success' as 'success' | 'info',
+  });
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [showErrors, setShowErrors] = useState(false);
-  const [autoSavedAt, setAutoSavedAt] = useState<Date | null>(null);
+  const [isOnline,       setIsOnline]       = useState(navigator.onLine);
+  const [showErrors,     setShowErrors]     = useState(false);
+
+  // true = questo preventivo ha già un ID atomico Supabase
+  const [idConsumed, setIdConsumed] = useState(!!initialQuote);
+
+  const settings = getSettings();
 
   const [quote, setQuote] = useState<Quote>(() => {
     if (initialQuote) {
-      // Migrazione: preventivi vecchi potrebbero non avere selectedNotes/promoLocale
       return {
         ...initialQuote,
         selectedNotes: initialQuote.selectedNotes ?? [],
-        promoLocale: initialQuote.promoLocale ?? false,
+        promoLocale:   initialQuote.promoLocale   ?? false,
       };
     }
+    // ID temporaneo locale, verrà sostituito al primo salvataggio
     return {
-      id: getNextQuoteId(),
+      id:        getNextQuoteId(),
       createdAt: new Date().toISOString(),
       ...getEmptyQuote(),
     } as Quote;
@@ -78,142 +95,169 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
 
   const isValid = quote.client.name.trim() !== '' && quote.client.date !== '';
 
-  // Listener online/offline
+  // ── Online/offline ───────────────────────────────────────────────────
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    const up   = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
     };
   }, []);
 
-  // Autosave silenzioso ogni 2s se i dati minimi sono validi
+  // ── Chiudi menu al click fuori ───────────────────────────────────────
   useEffect(() => {
-    if (!isValid) return;
-    const timer = setTimeout(() => {
-      onSave(quote);
-      setAutoSavedAt(new Date());
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [quote, isValid, onSave]);
-
-  // Chiudi i menu se si clicca altrove
-  useEffect(() => {
-    const close = () => {
-      setShowExportMenu(false);
-      setShowStatusMenu(false);
-    };
+    const close = () => { setShowExportMenu(false); setShowStatusMenu(false); };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, []);
 
+  // ── Utilities ────────────────────────────────────────────────────────
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
     setToastMessage({ text, visible: true, type });
-    setTimeout(() => setToastMessage(prev => ({ ...prev, visible: false })), 3000);
+    setTimeout(() => setToastMessage(p => ({ ...p, visible: false })), 3000);
   };
 
-  const handleManualSave = () => {
+  /** Garantisce che il preventivo abbia un ID atomico Supabase. */
+  const ensureAtomicId = async (current: Quote): Promise<Quote> => {
+    if (idConsumed) return current;
+    let atomicId: string;
+    try {
+      atomicId = await dbNextQuoteId();
+    } catch {
+      atomicId = getNextQuoteId();
+    }
+    consumeQuoteId();
+    const updated = { ...current, id: atomicId };
+    setQuote(updated);
+    setIdConsumed(true);
+    return updated;
+  };
+
+  // ── Salva (unica via) ────────────────────────────────────────────────
+  const handleManualSave = async () => {
     if (!isValid) {
       setShowErrors(true);
       showToast('Compila Nome e Data Evento', 'info');
       return;
     }
-    if (quote.id === getNextQuoteId()) consumeQuoteId();
-
     setIsSaving(true);
-    setTimeout(() => {
-      onSave(quote);
-      setIsSaving(false);
+    try {
+      const q = await ensureAtomicId(quote);
+      onSave(q);
       showToast('Preventivo salvato!');
-    }, 500);
+    } catch (err) {
+      console.error('[NewQuote] save error:', err);
+      showToast('Errore durante il salvataggio', 'info');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // Cambio stato — salva immediatamente
-  const handleStatusChange = (newStatus: Quote['status']) => {
+  // ── Cambio status (salva subito) ─────────────────────────────────────
+  const handleStatusChange = async (newStatus: Quote['status']) => {
     const updated = { ...quote, status: newStatus };
     setQuote(updated);
     if (isValid) {
-      if (updated.id === getNextQuoteId()) consumeQuoteId();
-      onSave(updated);
+      try {
+        const q = await ensureAtomicId(updated);
+        onSave(q);
+      } catch (err) {
+        console.error('[NewQuote] status-save error:', err);
+      }
     }
     setShowStatusMenu(false);
-    showToast(`Stato aggiornato: ${STATUS_LABELS[newStatus]}`);
+    showToast(`Stato: ${STATUS_LABELS[newStatus]}`);
   };
 
+  // ── Reset ────────────────────────────────────────────────────────────
   const handleReset = () => {
-    if (confirm('Sei sicuro di voler svuotare tutto? I dati non salvati andranno persi.')) {
-      setQuote({
-        id: getNextQuoteId(),
-        createdAt: new Date().toISOString(),
-        ...getEmptyQuote(),
-      } as Quote);
-      setShowErrors(false);
-      showToast('Form svuotato', 'info');
-    }
+    if (!confirm('Sei sicuro di voler svuotare tutto? I dati non salvati andranno persi.')) return;
+    setQuote({
+      id: getNextQuoteId(), createdAt: new Date().toISOString(), ...getEmptyQuote(),
+    } as Quote);
+    setIdConsumed(false);
+    setShowErrors(false);
+    showToast('Form svuotato', 'info');
   };
 
-  const handleExport = (format: 'pdf' | 'jpeg' | 'png') => {
+  // ── Export PDF / JPEG / PNG ──────────────────────────────────────────
+  const handleExport = async (format: 'pdf' | 'jpeg' | 'png') => {
     if (!isValid) {
       setShowErrors(true);
       showToast('Compila Nome e Data Evento prima di esportare', 'info');
       setShowExportMenu(false);
       return;
     }
-    if (quote.id === getNextQuoteId()) consumeQuoteId();
-
     setIsGeneratingPdf(true);
     setShowExportMenu(false);
-    onSave(quote);
 
-    setTimeout(() => {
-      const element = document.getElementById('pdf-template-container');
-      if (!element) {
-        setIsGeneratingPdf(false);
-        showToast('Errore Export. Riprova.', 'info');
-        return;
-      }
+    // Salva con ID stabile prima di catturare
+    let q = quote;
+    try {
+      q = await ensureAtomicId(quote);
+      onSave(q);
+    } catch (err) {
+      console.error('[NewQuote] export pre-save error:', err);
+    }
 
-      const clientName = quote.client.name ? quote.client.name.replace(/\s+/g, '_') : 'Cliente';
-      const filename = `${quote.id}_${clientName}`;
+    // Aspetta 2 frame + 500ms: assicura che il font base64 sia applicato
+    await new Promise<void>(resolve =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+          setTimeout(resolve, 500)
+        )
+      )
+    );
 
-      const opt = {
-        margin: 0,
-        filename: `${filename}.${format}`,
-        image: { type: format === 'png' ? 'png' : 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      };
+    const element = document.getElementById('pdf-template-container');
+    if (!element) {
+      setIsGeneratingPdf(false);
+      showToast('Errore: template non trovato, riprova.', 'info');
+      return;
+    }
 
-      const pdfWorker = (html2pdf as unknown as Html2PdfStatic)().set(opt).from(element);
+    const clientName = q.client.name ? q.client.name.replace(/\s+/g, '_') : 'Cliente';
+    const filename   = `${q.id}_${clientName}`;
 
+    const opt: Html2PdfOptions = {
+      margin:      0,
+      filename:    `${filename}.${format}`,
+      image:       { type: format === 'png' ? 'png' : 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    };
+
+    const worker = (html2pdf as unknown as Html2PdfStatic)().set(opt).from(element);
+
+    try {
       if (format === 'pdf') {
-        pdfWorker
-          .save()
-          .then(() => { setIsGeneratingPdf(false); showToast('PDF Generato!'); })
-          .catch((err: Error) => { console.error(err); setIsGeneratingPdf(false); showToast('Errore PDF.', 'info'); });
+        await worker.save();
+        showToast('PDF generato!');
       } else {
-        pdfWorker
-          .outputImg('datauristring')
-          .then((base64String: string) => {
-            const link = document.createElement('a');
-            link.href = base64String;
-            link.download = `${filename}.${format}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setIsGeneratingPdf(false);
-            showToast(`Immagine ${format.toUpperCase()} scaricata!`);
-          })
-          .catch((err: Error) => { console.error(err); setIsGeneratingPdf(false); showToast(`Errore ${format.toUpperCase()}.`, 'info'); });
+        const dataUri = await worker.outputImg('datauristring');
+        const link = document.createElement('a');
+        link.href = dataUri;
+        link.download = `${filename}.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast(`${format.toUpperCase()} scaricato!`);
       }
-    }, 300);
+    } catch (err) {
+      console.error('[NewQuote] export error:', err);
+      showToast(`Errore export ${format.toUpperCase()}`, 'info');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 relative">
+
       {/* Header sticky */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 bg-[var(--bg-primary)]/80 backdrop-blur-md z-10 py-2 -mx-4 px-4 md:mx-0 md:px-0">
         <div className="flex items-center gap-3">
@@ -233,16 +277,12 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
                 className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}
                 title={isOnline ? 'Online' : 'Offline — dati salvati in locale'}
               />
-              {autoSavedAt && (
-                <span className="text-[10px] text-gray-400 font-medium">
-                  ● Autosave {autoSavedAt.toLocaleTimeString()}
-                </span>
-              )}
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
+          {/* Svuota */}
           <button
             onClick={handleReset}
             className="px-4 py-2.5 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 rounded-xl font-medium transition text-sm"
@@ -250,8 +290,8 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
             Svuota
           </button>
 
-          {/* Selector stato documento */}
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
+          {/* Status */}
+          <div className="relative" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setShowStatusMenu(v => !v)}
               className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition flex items-center gap-1.5 ${STATUS_STYLES[quote.status]}`}
@@ -261,13 +301,10 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
-
             <AnimatePresence>
               {showStatusMenu && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
                   className="absolute right-0 mt-1 w-40 bg-white border border-[var(--border)] rounded-xl shadow-lg z-50 overflow-hidden"
                 >
                   {(['draft', 'sent', 'confirmed'] as Quote['status'][]).map(s => (
@@ -275,14 +312,9 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
                       key={s}
                       onClick={() => handleStatusChange(s)}
                       disabled={quote.status === s}
-                      className={`w-full text-left px-4 py-2.5 text-sm font-medium transition hover:bg-[var(--bg-tertiary)] flex items-center gap-2 ${
-                        quote.status === s ? 'opacity-40 cursor-default' : ''
-                      }`}
+                      className={`w-full text-left px-4 py-2.5 text-sm font-medium transition hover:bg-[var(--bg-tertiary)] flex items-center gap-2 ${quote.status === s ? 'opacity-40 cursor-default' : ''}`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${
-                        s === 'confirmed' ? 'bg-green-500' :
-                        s === 'sent' ? 'bg-blue-500' : 'bg-gray-400'
-                      }`} />
+                      <span className={`w-2 h-2 rounded-full ${s === 'confirmed' ? 'bg-green-500' : s === 'sent' ? 'bg-blue-500' : 'bg-gray-400'}`} />
                       {STATUS_LABELS[s]}
                     </button>
                   ))}
@@ -291,8 +323,8 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
             </AnimatePresence>
           </div>
 
-          {/* Export menu */}
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
+          {/* Esporta */}
+          <div className="relative" onClick={e => e.stopPropagation()}>
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => setShowExportMenu(v => !v)}
@@ -301,26 +333,25 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
                 isGeneratingPdf ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-white hover:bg-[var(--bg-tertiary)]'
               }`}
             >
-              {isGeneratingPdf ? '⏳ Export...' : '📄 Esporta...'}
+              {isGeneratingPdf
+                ? <><span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> Export...</>
+                : '📄 Esporta...'}
             </motion.button>
-
             <AnimatePresence>
               {showExportMenu && (
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
                   className="absolute right-0 mt-2 w-48 bg-white border border-[var(--border)] rounded-xl shadow-lg z-50 overflow-hidden"
                 >
                   <div className="py-1">
-                    <button onClick={() => handleExport('pdf')} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2">
-                      <span className="text-red-500 font-bold">PDF</span> Documento
+                    <button onClick={() => handleExport('pdf')}  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2">
+                      <span className="text-red-500 font-bold text-xs">PDF</span> Documento
                     </button>
                     <button onClick={() => handleExport('jpeg')} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2 border-t border-[var(--border)]/50">
-                      <span className="text-blue-500 font-bold">JPEG</span> Leggero
+                      <span className="text-blue-500 font-bold text-xs">JPEG</span> Leggero
                     </button>
-                    <button onClick={() => handleExport('png')} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2 border-t border-[var(--border)]/50">
-                      <span className="text-purple-500 font-bold">PNG</span> Alta qualità
+                    <button onClick={() => handleExport('png')}  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--bg-tertiary)] transition flex items-center gap-2 border-t border-[var(--border)]/50">
+                      <span className="text-purple-500 font-bold text-xs">PNG</span> Alta qualità
                     </button>
                   </div>
                 </motion.div>
@@ -337,7 +368,9 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
               isSaving ? 'bg-gray-400' : 'bg-[var(--accent)]'
             }`}
           >
-            {isSaving ? '⏳ Salvo...' : '💾 Salva'}
+            {isSaving
+              ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Salvo...</>
+              : '💾 Salva'}
           </motion.button>
         </div>
       </header>
@@ -376,8 +409,22 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
 
       <Toast message={toastMessage.text} isVisible={toastMessage.visible} type={toastMessage.type} />
 
-      {/* Template PDF nascosto */}
-      <div style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '210mm' }}>
+      {/*
+        PdfTemplate SEMPRE nel DOM, fuori viewport (position:fixed).
+        Il browser pre-carica il font base64 → export istantaneo.
+        L'id="pdf-template-container" è dentro PdfTemplate stesso.
+      */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: '-99999px',
+          left: '-99999px',
+          width: '210mm',
+          pointerEvents: 'none',
+          zIndex: -1,
+        }}
+      >
         <PdfTemplate quote={quote} settings={settings} />
       </div>
     </div>

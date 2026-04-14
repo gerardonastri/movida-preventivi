@@ -71,9 +71,9 @@ export default function Sidebar({ activeView, onNavigate, quoteCount }: SidebarP
       </nav>
 
       {/* Footer */}
-      <div className="px-3 pt-4 border-t border-[var(--border)]">
+      {/* <div className="px-3 pt-4 border-t border-[var(--border)]">
         <p className="text-xs text-[var(--text-muted)]">v1.0.0 · Local-first</p>
-      </div>
+      </div> */}
     </aside>
   );
 }
