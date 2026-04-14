@@ -27,17 +27,22 @@ const LOCATIONS_KEY            = 'preventivi_locations';
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CATALOG_API_URL      = 'https://www.movidaintour.it/_functions/catalogo';
 
-// FIX DEFINITIVO VERCEL: Usiamo il tunnel di Vercel (vercel.json) come via principale!
+// FIX: Rimosso il warning "url is defined but never used"
+// Abbiamo trasformato 'url' in '_' per indicare a TS che è un parametro intenzionalmente ignorato nel primo caso,
+// oppure puoi semplicemente usare la costante CATALOG_API_URL.
 const CORS_PROXIES: Array<(url: string) => { proxyUrl: string; extract: (r: Response) => Promise<string> }> = [
-  (url) => ({
-    // 1. Vercel Rewrite (Funziona in PRODUZIONE grazie al file vercel.json)
+  () => ({
+    // 1. Vercel Rewrite (Usa il tunnel configurato in vercel.json)
     proxyUrl: '/api/catalogo',
     extract: (r) => r.text(),
   }),
   (url) => ({
-    // 2. AllOrigins (Funziona in LOCALE quando sviluppi sul tuo PC e il tunnel Vercel non c'è)
+    // 2. AllOrigins (Usa il parametro url che viene passato, ovvero CATALOG_API_URL)
     proxyUrl: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    extract: async (r) => { const j = await r.json(); return (j.contents as string) ?? ''; },
+    extract: async (r) => { 
+      const j = await r.json(); 
+      return (j.contents as string) ?? ''; 
+    },
   })
 ];
 const PROXY_TIMEOUT_MS = 6000;
