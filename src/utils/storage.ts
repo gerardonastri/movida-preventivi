@@ -1,12 +1,3 @@
-/**
- * storage.ts — Strato di persistenza ibrido
- *
- * Strategia: "local-first with cloud sync"
- * - Tutte le letture vengono prima dal localStorage (istantanee, offline-safe)
- * - Tutte le scritture vanno sia su localStorage (immediato) sia su Supabase (asincrono)
- * - Al mount dell'app, i dati Supabase sovrascrivono la cache locale (se più recenti)
- */
-
 import type { Quote, CompanySettings, CatalogItem } from './types';
 import defaultCatalog from '../data/defaultCatalog.json';
 
@@ -36,23 +27,18 @@ const LOCATIONS_KEY            = 'preventivi_locations';
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CATALOG_API_URL      = 'https://www.movidaintour.it/_functions/catalogo';
 
-// FIX APPLE-STYLE: Catena di fetch ultra-resiliente per Vercel
+// FIX DEFINITIVO VERCEL: Usiamo il tunnel di Vercel (vercel.json) come via principale!
 const CORS_PROXIES: Array<(url: string) => { proxyUrl: string; extract: (r: Response) => Promise<string> }> = [
   (url) => ({
-    // 1. Direct fetch: La via più pulita. Se Wix Velo espone gli header CORS, funziona senza intermediari.
-    proxyUrl: url,
+    // 1. Vercel Rewrite (Funziona in PRODUZIONE grazie al file vercel.json)
+    proxyUrl: '/api/catalogo',
     extract: (r) => r.text(),
   }),
   (url) => ({
-    // 2. AllOrigins: Il proxy più stabile per gli ambienti Serverless come Vercel.
+    // 2. AllOrigins (Funziona in LOCALE quando sviluppi sul tuo PC e il tunnel Vercel non c'è)
     proxyUrl: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     extract: async (r) => { const j = await r.json(); return (j.contents as string) ?? ''; },
-  }),
-  (url) => ({
-    // 3. CorsProxy.io: Ottimo in localhost, ma spesso blocca i domini Vercel in production.
-    proxyUrl: `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    extract: (r) => r.text(),
-  }),
+  })
 ];
 const PROXY_TIMEOUT_MS = 6000;
 

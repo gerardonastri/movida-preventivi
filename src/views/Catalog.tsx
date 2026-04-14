@@ -26,50 +26,76 @@ export default function Catalog() {
 
   // ── Carica da Supabase al mount ────────
   useEffect(() => {
+    console.log('[DEBUG Catalog] Mount del componente. Inizio chiamata a dbGetCatalog() per scaricare i dati da Supabase...');
+    
     dbGetCatalog().then(remoteItems => {
+      console.log('[DEBUG Catalog] Risposta da dbGetCatalog():', remoteItems);
+      
       if (remoteItems && remoteItems.length > 0) {
+        console.log(`[DEBUG Catalog] Trovati ${remoteItems.length} elementi su Supabase. Aggiorno lo stato e il localStorage.`);
         setItems(remoteItems);
         localStorage.setItem('preventivi_catalog', JSON.stringify(remoteItems));
       } else if (isCatalogCacheStale()) {
+        console.log('[DEBUG Catalog] Nessun elemento remoto trovato e la cache è stale (vecchia). Tento il fetch da Wix...');
+        syncFromApi(false);
+      } else {
+        console.log('[DEBUG Catalog] Nessun elemento remoto trovato, ma la cache locale è valida. Manteniamo i dati correnti.');
+      }
+    }).catch((error) => {
+      console.error('[DEBUG Catalog] Errore/Eccezione durante la chiamata dbGetCatalog:', error);
+      if (isCatalogCacheStale()) {
+        console.log('[DEBUG Catalog] Fallback attivato a causa di errore Supabase. Tento il fetch da Wix...');
         syncFromApi(false);
       }
-    }).catch(() => {
-      if (isCatalogCacheStale()) syncFromApi(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Sync API Wix (FIXED: Difesa dei dati Supabase) ────────
   const syncFromApi = useCallback(async (force = false) => {
+    console.log(`[DEBUG Catalog] Funzione syncFromApi chiamata. Force: ${force}`);
     setSyncStatus('loading');
     setSyncMessage('Sincronizzazione in corso…');
 
-    const result = await fetchCatalogFromApi(force);
+    try {
+      console.log('[DEBUG Catalog] Esecuzione fetchCatalogFromApi...');
+      const result = await fetchCatalogFromApi(force);
+      console.log('[DEBUG Catalog] Risultato GREGZZO di fetchCatalogFromApi:', result);
 
-    if (result.source === 'api') {
-      // Successo API Reale: scaricato nuovo JSON dal sito Wix
-      setItems(result.items);
-      setLastSync(result.updatedAt);
-      setIsStale(false);
-      setSyncStatus('success');
-      setSyncMessage(`Catalogo aggiornato! (${result.items.length} servizi)`);
-      
-      dbSaveCatalog(result.items).catch(err =>
-        console.warn('[Catalog] Wix→Supabase sync warn:', err)
-      );
-    } else if (result.source === 'cache') {
-      // Successo Cache: usiamo la cache fresca locale del sito Wix
-      setItems(result.items);
-      setLastSync(result.updatedAt);
-      setIsStale(false);
-      setSyncStatus('idle');
-      setSyncMessage('');
-    } else {
-      // ERRORE CRITICO: Il sito Wix non è raggiungibile.
-      // FIX APPLE: NON facciamo "setItems(result.items)", altrimenti 
-      // distruggiamo i dati attuali di Supabase con il defaultCatalog locale!
+      if (result.source === 'api') {
+        // Successo API Reale: scaricato nuovo JSON dal sito Wix
+        console.log('[DEBUG Catalog] Successo! Fonte dati: API. Aggiorno lo stato...');
+        setItems(result.items);
+        setLastSync(result.updatedAt);
+        setIsStale(false);
+        setSyncStatus('success');
+        setSyncMessage(`Catalogo aggiornato! (${result.items.length} servizi)`);
+        
+        dbSaveCatalog(result.items).catch(err =>
+          console.warn('[DEBUG Catalog] Avviso: Errore durante il salvataggio dei nuovi dati Wix su Supabase:', err)
+        );
+      } else if (result.source === 'cache') {
+        // Successo Cache: usiamo la cache fresca locale del sito Wix
+        console.log('[DEBUG Catalog] Successo! Fonte dati: CACHE WIX LOCALE. Aggiorno lo stato...');
+        setItems(result.items);
+        setLastSync(result.updatedAt);
+        setIsStale(false);
+        setSyncStatus('idle');
+        setSyncMessage('');
+      } else {
+        // ERRORE CRITICO: Il sito Wix non è raggiungibile.
+        // FIX APPLE: NON facciamo "setItems(result.items)", altrimenti 
+        // distruggiamo i dati attuali di Supabase con il defaultCatalog locale!
+        console.error('[DEBUG Catalog] FALLIMENTO SYNC WIX. Il result.source è:', result.source);
+        console.error('[DEBUG Catalog] I dati di "fallback" restituiti dal fetch sono:', result.items);
+        setSyncStatus('error');
+        setSyncMessage('Sito irraggiungibile. Dati Database mantenuti intatti.');
+      }
+    } catch (error) {
+      // In caso di un crash non gestito all'interno della funzione di storage
+      console.error('[DEBUG Catalog] ECCEZIONE NON GESTITA durante syncFromApi:', error);
       setSyncStatus('error');
-      setSyncMessage('Sito irraggiungibile. Dati Database mantenuti intatti.');
+      setSyncMessage('Sito irraggiungibile. Eccezione di rete.');
     }
 
     setTimeout(() => { setSyncStatus('idle'); setSyncMessage(''); }, 4500);
@@ -148,7 +174,8 @@ export default function Catalog() {
         setSyncStatus('error');
         setSyncMessage('Errore salvataggio Supabase.');
       }
-    } catch {
+    } catch (err) {
+      console.error('[DEBUG Catalog] Errore in handleForceSave:', err);
       setSyncStatus('error');
       setSyncMessage('Errore connessione.');
     }
