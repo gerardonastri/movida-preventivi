@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/catalogo",
+      "destination": "https://www.movidaintour.it/_functions/catalogo"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
