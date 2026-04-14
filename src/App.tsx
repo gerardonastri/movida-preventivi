@@ -79,7 +79,6 @@ export default function App() {
             onNew={handleNewQuote}
             onEdit={handleEditQuote}
             onQuotesChange={setQuotes}
-            onSaveQuote={saveQuote}   // ← FIX: usa il saveQuote dell'hook, non l'import diretto
           />
         );
 
