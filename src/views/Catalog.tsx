@@ -22,70 +22,65 @@ export default function Catalog() {
   const [lastSync, setLastSync]       = useState<Date | null>(getCatalogLastSync());
   const [isStale, setIsStale]         = useState<boolean>(isCatalogCacheStale());
 
-  // ── Debounce timer per il salvataggio su Supabase ─────────────────────────
-  // Evita di chiamare Supabase ad ogni singola keystroke nell'editor del catalogo.
   const supabaseSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Carica da Supabase al mount (override rispetto al localStorage) ────────
+  // ── Carica da Supabase al mount ────────
   useEffect(() => {
     dbGetCatalog().then(remoteItems => {
       if (remoteItems && remoteItems.length > 0) {
         setItems(remoteItems);
-        // Aggiorna anche il localStorage con i dati remoti
         localStorage.setItem('preventivi_catalog', JSON.stringify(remoteItems));
       } else if (isCatalogCacheStale()) {
-        // Nessun dato Supabase — prova l'API Wix
         syncFromApi(false);
       }
     }).catch(() => {
-      // Supabase non raggiungibile — fallback a cache locale / API Wix
       if (isCatalogCacheStale()) syncFromApi(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Sync API Wix ────────────────────────────────────────────────────────────
+  // ── Sync API Wix (FIXED: Difesa dei dati Supabase) ────────
   const syncFromApi = useCallback(async (force = false) => {
     setSyncStatus('loading');
     setSyncMessage('Sincronizzazione in corso…');
 
     const result = await fetchCatalogFromApi(force);
 
-    setItems(result.items);
-    setLastSync(result.updatedAt);
-    setIsStale(false);
-
     if (result.source === 'api') {
+      // Successo API Reale: scaricato nuovo JSON dal sito Wix
+      setItems(result.items);
+      setLastSync(result.updatedAt);
+      setIsStale(false);
       setSyncStatus('success');
       setSyncMessage(`Catalogo aggiornato! (${result.items.length} servizi)`);
-      // Salva anche su Supabase il catalogo appena scaricato da Wix
+      
       dbSaveCatalog(result.items).catch(err =>
         console.warn('[Catalog] Wix→Supabase sync warn:', err)
       );
     } else if (result.source === 'cache') {
+      // Successo Cache: usiamo la cache fresca locale del sito Wix
+      setItems(result.items);
+      setLastSync(result.updatedAt);
+      setIsStale(false);
       setSyncStatus('idle');
       setSyncMessage('');
     } else {
+      // ERRORE CRITICO: Il sito Wix non è raggiungibile.
+      // FIX APPLE: NON facciamo "setItems(result.items)", altrimenti 
+      // distruggiamo i dati attuali di Supabase con il defaultCatalog locale!
       setSyncStatus('error');
-      setSyncMessage('Impossibile connettersi. Uso catalogo locale.');
+      setSyncMessage('Sito irraggiungibile. Dati Database mantenuti intatti.');
     }
 
-    setTimeout(() => { setSyncStatus('idle'); setSyncMessage(''); }, 4000);
+    setTimeout(() => { setSyncStatus('idle'); setSyncMessage(''); }, 4500);
   }, []);
 
   // ── CRUD con debounce Supabase ─────────────────────────────────────────────
 
-  /**
-   * Aggiorna stato React + localStorage immediatamente.
-   * Schedula il salvataggio su Supabase con debounce 1.5s
-   * per evitare centinaia di chiamate durante la digitazione.
-   */
   const updateItems = useCallback((newItems: CatalogItem[]) => {
     setItems(newItems);
-    // localStorage sincrono — sempre aggiornato
     localStorage.setItem('preventivi_catalog', JSON.stringify(newItems));
 
-    // Supabase con debounce — aspetta che l'utente smetta di digitare
     if (supabaseSaveTimer.current) clearTimeout(supabaseSaveTimer.current);
     supabaseSaveTimer.current = setTimeout(() => {
       dbSaveCatalog(newItems).catch(err =>
@@ -94,12 +89,10 @@ export default function Catalog() {
     }, 1500);
   }, []);
 
-  // Cleanup timer al unmount
   useEffect(() => {
     return () => {
       if (supabaseSaveTimer.current) {
         clearTimeout(supabaseSaveTimer.current);
-        // Flush immediato al dismount (es. navigazione verso altra pagina)
         const pending = items;
         dbSaveCatalog(pending).catch(() => {/* silent */});
       }
@@ -128,37 +121,26 @@ export default function Catalog() {
     updateItems(items.filter(item => item.id !== id));
   };
 
-  /**
-   * Factory reset: svuota localStorage E cancella il catalogo da Supabase.
-   * Poi ricarica la pagina — al mount verrà riscaricato da Wix API.
-   */
   const handleFactoryReset = async () => {
     if (!confirm('Attenzione: Questo cancellerà tutte le tue modifiche locali e su Supabase, e ricaricherà il catalogo dal sito Movida. Vuoi procedere?')) return;
-
-    // 1. Svuota Supabase (passa array vuoto → delete all)
     try {
       await dbSaveCatalog([]);
     } catch (err) {
       console.warn('[Catalog] factory reset Supabase clear:', err);
     }
-
-    // 2. Svuota localStorage
     localStorage.removeItem('preventivi_catalog');
     localStorage.removeItem('preventivi_catalog_api');
     localStorage.removeItem('preventivi_catalog_api_timestamp');
-
     window.location.reload();
   };
 
-  // ── Salvataggio manuale forzato su Supabase ────────────────────────────────
   const handleForceSave = async () => {
     setSyncStatus('loading');
     setSyncMessage('Salvataggio su Supabase…');
     try {
-      // Annulla il debounce pendente e salva subito
       if (supabaseSaveTimer.current) clearTimeout(supabaseSaveTimer.current);
       const ok = await dbSaveCatalog(items);
-      saveCatalogItems(items); // aggiorna anche localStorage
+      saveCatalogItems(items); 
       if (ok) {
         setSyncStatus('success');
         setSyncMessage(`${items.length} servizi salvati su Supabase!`);
@@ -213,7 +195,6 @@ export default function Catalog() {
 
   return (
     <div className="pb-24">
-
       {/* Header Sticky */}
       <div className="sticky top-0 z-20 bg-[var(--bg-primary)]/80 backdrop-blur-lg pt-4 pb-4 -mx-4 px-4 md:mx-0 md:px-0 border-b border-[var(--border)] mb-6">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
@@ -256,7 +237,7 @@ export default function Catalog() {
               <span className="hidden md:inline">
                 {syncStatus === 'loading' ? 'Aggiorno…'
                 : syncStatus === 'success' ? 'Aggiornato!'
-                : syncStatus === 'error'   ? 'Errore'
+                : syncStatus === 'error'   ? 'Errore API'
                 : isStale ? 'Aggiorna da Wix'
                 : 'Da Wix'}
               </span>
@@ -418,7 +399,7 @@ export default function Catalog() {
           >
             <span className="text-4xl mb-3">{syncStatus === 'loading' ? '⏳' : '👻'}</span>
             <h3 className="text-lg font-bold text-[var(--text-primary)]">
-              {syncStatus === 'loading' ? 'Scarico il catalogo…' : 'Nessun servizio trovato'}
+              {syncStatus === 'loading' ? 'Sincronizzazione in corso…' : 'Nessun servizio trovato'}
             </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1 max-w-sm">
               {syncStatus === 'loading'

@@ -5,9 +5,6 @@
  * - Tutte le letture vengono prima dal localStorage (istantanee, offline-safe)
  * - Tutte le scritture vanno sia su localStorage (immediato) sia su Supabase (asincrono)
  * - Al mount dell'app, i dati Supabase sovrascrivono la cache locale (se più recenti)
- *
- * I componenti che usano getQuotes/saveQuote/etc. NON cambiano — stessa API.
- * La sincronizzazione con Supabase avviene tramite useAppData (App.tsx).
  */
 
 import type { Quote, CompanySettings, CatalogItem } from './types';
@@ -39,17 +36,21 @@ const LOCATIONS_KEY            = 'preventivi_locations';
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CATALOG_API_URL      = 'https://www.movidaintour.it/_functions/catalogo';
 
+// FIX APPLE-STYLE: Catena di fetch ultra-resiliente per Vercel
 const CORS_PROXIES: Array<(url: string) => { proxyUrl: string; extract: (r: Response) => Promise<string> }> = [
   (url) => ({
-    proxyUrl: `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    // 1. Direct fetch: La via più pulita. Se Wix Velo espone gli header CORS, funziona senza intermediari.
+    proxyUrl: url,
     extract: (r) => r.text(),
   }),
   (url) => ({
+    // 2. AllOrigins: Il proxy più stabile per gli ambienti Serverless come Vercel.
     proxyUrl: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     extract: async (r) => { const j = await r.json(); return (j.contents as string) ?? ''; },
   }),
   (url) => ({
-    proxyUrl: `https://thingproxy.freeboard.io/fetch/${url}`,
+    // 3. CorsProxy.io: Ottimo in localhost, ma spesso blocca i domini Vercel in production.
+    proxyUrl: `https://corsproxy.io/?${encodeURIComponent(url)}`,
     extract: (r) => r.text(),
   }),
 ];
@@ -63,21 +64,17 @@ export function getQuotes(): Quote[] {
   try { return JSON.parse(localStorage.getItem(QUOTES_KEY) || '[]'); } catch { return []; }
 }
 
-/** Scrive su localStorage E su Supabase (fire-and-forget) */
 export function saveQuote(quote: Quote): void {
-  // 1. Aggiorna cache locale immediatamente
   const quotes = getQuotes();
   const idx = quotes.findIndex(q => q.id === quote.id);
   if (idx >= 0) quotes[idx] = quote; else quotes.unshift(quote);
   localStorage.setItem(QUOTES_KEY, JSON.stringify(quotes));
 
-  // 2. Sync Supabase in background
   dbSaveQuote(quote).catch(err =>
     console.error('[storage] saveQuote sync error:', err)
   );
 }
 
-/** Elimina da localStorage E da Supabase */
 export function deleteQuote(id: string): void {
   localStorage.setItem(QUOTES_KEY, JSON.stringify(getQuotes().filter(q => q.id !== id)));
   dbDeleteQuote(id).catch(err =>
@@ -89,22 +86,15 @@ export function deleteQuote(id: string): void {
 // QUOTE ID — atomico via Supabase, con fallback locale
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Peek: restituisce il prossimo ID senza consumarlo (solo cache locale) */
 export function getNextQuoteId(): string {
   const counter = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) + 1;
   return `PREV-${String(counter).padStart(3, '0')}`;
 }
 
-/**
- * Consuma il prossimo ID (incrementa il counter).
- * Usa Supabase per l'atomicità, fallback locale se offline.
- * ATTENZIONE: è asincrona — usata solo in NewQuote prima del salvataggio.
- */
 export async function consumeQuoteIdAsync(): Promise<string> {
   return dbNextQuoteId();
 }
 
-/** Versione sincrona legacy (incrementa solo il counter locale) */
 export function consumeQuoteId(): void {
   const counter = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) + 1;
   localStorage.setItem(COUNTER_KEY, String(counter));
@@ -115,10 +105,6 @@ export function generateQuoteId(): string {
   localStorage.setItem(COUNTER_KEY, String(counter));
   return `PREV-${String(counter).padStart(3, '0')}`;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMPTY QUOTE
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function getEmptyQuote(): Omit<Quote, 'id' | 'createdAt'> {
   return {
@@ -188,7 +174,7 @@ export function deleteLocation(location: string): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CATALOG — con override Supabase
+// CATALOG
 // ─────────────────────────────────────────────────────────────────────────────
 
 function isCacheValid(): boolean {
@@ -225,14 +211,13 @@ export function getCatalogItems(): CatalogItem[] {
 
 export function saveCatalogItems(items: CatalogItem[]): void {
   localStorage.setItem(CATALOG_KEY, JSON.stringify(items));
-  // Sincronizza con Supabase
   dbSaveCatalog(items).catch(err =>
     console.error('[storage] saveCatalog sync error:', err)
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CATALOG — fetch dall'API Wix (con proxy CORS cascade) — invariato
+// CATALOG FETCH WIX
 // ─────────────────────────────────────────────────────────────────────────────
 
 function parseWixPrice(raw: string | undefined): number {
@@ -241,19 +226,17 @@ function parseWixPrice(raw: string | undefined): number {
   return match ? parseInt(match[0], 10) : 0;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapWixItemToCatalogItem(item: Record<string, any>, tag: string): CatalogItem {
+function mapWixItemToCatalogItem(item: Record<string, unknown>, tag: string): CatalogItem {
   return {
-    id:      item._id || crypto.randomUUID(),
-    name:    `[${tag}] ${(item.title || 'Servizio').trim().toUpperCase()}`,
-    details: item.subtitle || '',
-    notes:   item.itemPageText || item.categoria || '',
-    price:   parseWixPrice(item.prezzo),
+    id:      (item._id as string | undefined) || crypto.randomUUID(),
+    name:    `[${tag}] ${(item.title as string | undefined || 'Servizio').trim().toUpperCase()}`,
+    details: (item.subtitle as string | undefined) || '',
+    notes:   (item.itemPageText as string | undefined) || (item.categoria as string | undefined) || '',
+    price:   parseWixPrice(item.prezzo as string | undefined),
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapApiResponse(data: any[][]): CatalogItem[] {
+function mapApiResponse(data: unknown[][]): CatalogItem[] {
   const tagMap: Record<number, string> = { 0: 'ADULTI', 1: 'BIMBI' };
   const items: CatalogItem[] = [];
   data.forEach((group, i) => {
@@ -261,7 +244,7 @@ function mapApiResponse(data: any[][]): CatalogItem[] {
     if (!Array.isArray(group)) return;
     group.forEach(item => {
       if (!item || typeof item !== 'object') return;
-      items.push(mapWixItemToCatalogItem(item, tag));
+      items.push(mapWixItemToCatalogItem(item as Record<string, unknown>, tag));
     });
   });
   return items;
@@ -328,8 +311,7 @@ export function getCatalogLastSync(): Date | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SYNC INIZIALE — chiamato da App al mount
-// Scarica i dati Supabase e aggiorna il localStorage (source of truth remota)
+// SYNC INIZIALE
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface SyncResult {
@@ -347,27 +329,23 @@ export async function syncFromSupabase(): Promise<SyncResult> {
     dbGetLocations(),
   ]);
 
-  // Quotes: sovrascrive locale con dati remoti
   const remoteQuotes = quotes.status === 'fulfilled' ? quotes.value : [];
   if (remoteQuotes.length > 0) {
     localStorage.setItem(QUOTES_KEY, JSON.stringify(remoteQuotes));
   }
 
-  // Settings: unisci (remote ha priorità, ma se vuoto usa locale)
   let finalSettings = getSettings();
   if (remoteSettings.status === 'fulfilled' && remoteSettings.value) {
     finalSettings = remoteSettings.value;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(finalSettings));
   }
 
-  // Catalog: se Supabase ha dati, usali come override
   let finalCatalog = getCatalogItems();
   if (remoteCatalog.status === 'fulfilled' && remoteCatalog.value && remoteCatalog.value.length > 0) {
     finalCatalog = remoteCatalog.value;
     localStorage.setItem(CATALOG_KEY, JSON.stringify(finalCatalog));
   }
 
-  // Locations: merge (unione, rimuove duplicati, locale ha priorità temporale)
   let finalLocations = getSavedLocations();
   if (remoteLocations.status === 'fulfilled') {
     const merged = Array.from(new Set([
