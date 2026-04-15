@@ -7,11 +7,13 @@ interface SidebarProps {
   quoteCount: number;
 }
 
+// Aggiunto il nuovo navItem per le Location
 const navItems: { id: View; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'Dashboard',       icon: '▦' },
+  { id: 'dashboard', label: 'Dashboard',        icon: '▦' },
   { id: 'new',       label: 'Nuovo preventivo', icon: '+' },
   { id: 'quotes',    label: 'Preventivi',       icon: '≡' },
   { id: 'catalog',   label: 'Catalogo',         icon: '🏷️' },
+  { id: 'locations', label: 'Location',         icon: '📍' },
   { id: 'settings',  label: 'Impostazioni',     icon: '⚙' },
 ];
 

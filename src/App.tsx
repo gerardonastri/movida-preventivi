@@ -7,17 +7,20 @@ import NewQuote   from './views/NewQuote';
 import QuotesList from './views/QuotesList';
 import Catalog    from './views/Catalog';
 import Settings   from './views/Settings';
+import LocationsManager from './views/LocationsManager'; // <-- NUOVA VISTA
 
 import { useAppData, type SyncState } from './utils/useAppData';
 import { dbNextQuoteId }              from './utils/db';
 import { getNextQuoteId, consumeQuoteId } from './utils/storage';
 import type { Quote, View } from './utils/types';
 
+// Aggiunto il tab Luoghi anche per la navigazione mobile
 const mobileNav: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Home',     icon: '▦'  },
   { id: 'new',       label: 'Nuovo',    icon: '+'  },
   { id: 'quotes',    label: 'Lista',    icon: '≡'  },
   { id: 'catalog',   label: 'Catalogo', icon: '🏷️' },
+  { id: 'locations', label: 'Luoghi',   icon: '📍' },
   { id: 'settings',  label: 'Config',   icon: '⚙'  },
 ];
 
@@ -43,7 +46,7 @@ function SyncIndicator({ state }: { state: SyncState }) {
 }
 
 export default function App() {
-  const [view,      setView]      = useState<View>('dashboard');
+  const [view,       setView]       = useState<View>('dashboard');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { quotes, syncState, saveQuote, deleteQuote, setQuotes } = useAppData();
@@ -109,10 +112,14 @@ export default function App() {
       case 'catalog':
         return <Catalog />;
 
+      // <-- NUOVA VISTA INSERITA QUI
+      case 'locations':
+        return <LocationsManager />;
+
       case 'settings':
         return (
           <Settings
-            quotes={quotes}   // ← FIX: passa i quotes aggiornati da Supabase per l'export
+            quotes={quotes}
           />
         );
     }
@@ -137,14 +144,16 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] flex items-center justify-around px-2 py-2 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+      
+      {/* Mobile Nav inferiore */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] flex items-center justify-around px-2 py-2 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] overflow-x-auto">
         {mobileNav.map(item => {
           const isActive = view === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setView(item.id)}
-              className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+              className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors min-w-[60px] ${
                 isActive ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
               }`}
             >

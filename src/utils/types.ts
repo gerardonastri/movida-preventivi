@@ -86,4 +86,4 @@ export interface Quote {
   promoLocale: boolean;      // nasconde importi → "PROMO LOCALE"
 }
 
-export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings';
+export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings' | 'locations'; 

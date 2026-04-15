@@ -524,6 +524,7 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
                   const lineDiscount = isOmaggio ? 0 : s.itemDiscount || 0;
                   const lineTotal = lineSubtotal - lineDiscount;
                   const hasNotes = !!s.notes;
+                  const cleanName = s.name ? s.name.replace(/^\[.*?\]\s*/, '').trim() : '';
 
                   return (
                     <React.Fragment key={i}>
@@ -554,7 +555,7 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
                             }}
                           >
                             {s.qty > 1 ? `${s.qty}X ` : ""}
-                            {s.name}
+                            {cleanName}
 
                             {isOmaggio && (
                               <span

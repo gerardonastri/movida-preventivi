@@ -66,6 +66,17 @@ export function saveQuote(quote: Quote): void {
   );
 }
 
+/**
+ * Salva il preventivo SOLO in localStorage — nessuna chiamata a Supabase.
+ * Usato dall'autosave silenzioso in NewQuote per salvare bozze locali.
+ */
+export function localSaveQuote(quote: Quote): void {
+  const quotes = getQuotes();
+  const idx = quotes.findIndex(q => q.id === quote.id);
+  if (idx >= 0) quotes[idx] = quote; else quotes.unshift(quote);
+  localStorage.setItem(QUOTES_KEY, JSON.stringify(quotes));
+}
+
 export function deleteQuote(id: string): void {
   localStorage.setItem(QUOTES_KEY, JSON.stringify(getQuotes().filter(q => q.id !== id)));
   dbDeleteQuote(id).catch(err =>

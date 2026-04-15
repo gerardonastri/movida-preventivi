@@ -39,6 +39,7 @@ import {
   getNextQuoteId,
   consumeQuoteId,
   getSettings,
+  localSaveQuote,
 } from '../utils/storage';
 import { dbNextQuoteId } from '../utils/db';
 import type { Quote } from '../utils/types';
@@ -95,6 +96,16 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
 
   const isValid = quote.client.name.trim() !== '' && quote.client.date !== '';
 
+  // ── Autosave in localStorage (silenzioso, nessuna chiamata DB) ───────
+  // Si attiva 800ms dopo ogni modifica al form.
+  // Il salvataggio su Supabase avviene SOLO su clic "Salva".
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      localSaveQuote(quote);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [quote]);
+
   // ── Online/offline ───────────────────────────────────────────────────
   useEffect(() => {
     const up   = () => setIsOnline(true);
@@ -120,14 +131,18 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
     setTimeout(() => setToastMessage(p => ({ ...p, visible: false })), 3000);
   };
 
-  /** Garantisce che il preventivo abbia un ID atomico Supabase. */
+  /** Garantisce che il preventivo abbia un ID atomico Supabase con il prefisso corretto. */
   const ensureAtomicId = async (current: Quote): Promise<Quote> => {
     if (idConsumed) return current;
     let atomicId: string;
+    const prefix = current.documentType === 'contratto' ? 'CONTR' : 'PREV';
     try {
-      atomicId = await dbNextQuoteId();
+      const rawId = await dbNextQuoteId(); // es. "PREV-007"
+      // Sostituisce il prefisso con quello corretto per il tipo documento
+      atomicId = rawId.replace(/^[A-Z]+-/, `${prefix}-`);
     } catch {
-      atomicId = getNextQuoteId();
+      const counter = getNextQuoteId().replace(/^[A-Z]+-/, '');
+      atomicId = `${prefix}-${counter}`;
     }
     consumeQuoteId();
     const updated = { ...current, id: atomicId };
@@ -136,7 +151,7 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
     return updated;
   };
 
-  // ── Salva (unica via) ────────────────────────────────────────────────
+  // ── Salva su DB (unica via al database) ─────────────────────────────
   const handleManualSave = async () => {
     if (!isValid) {
       setShowErrors(true);
@@ -147,13 +162,22 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
     try {
       const q = await ensureAtomicId(quote);
       onSave(q);
-      showToast('Preventivo salvato!');
+      const label = q.documentType === 'contratto' ? 'Contratto salvato!' : 'Preventivo salvato!';
+      showToast(label);
     } catch (err) {
       console.error('[NewQuote] save error:', err);
       showToast('Errore durante il salvataggio', 'info');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // ── Torna indietro — salva bozza locale se dati minimi presenti ──────
+  const handleBack = () => {
+    if (isValid) {
+      localSaveQuote(quote); // salva bozza in localStorage prima di uscire
+    }
+    onBack();
   };
 
   // ── Cambio status (salva subito) ─────────────────────────────────────
@@ -262,7 +286,7 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 bg-[var(--bg-primary)]/80 backdrop-blur-md z-10 py-2 -mx-4 px-4 md:mx-0 md:px-0">
         <div className="flex items-center gap-3">
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-[var(--shadow-card)] hover:bg-[var(--bg-tertiary)] transition text-lg"
           >
             ←
