@@ -23,6 +23,12 @@ export interface CatalogItem {
   details: string;
   notes: string;
   price: number;
+  /** Indica l'origine dell'item:
+   *  - 'wix'    → importato dal sito Movida tramite sync API
+   *  - 'manual' → creato manualmente in app
+   * Gli item 'manual' sopravvivono al sync Wix.
+   */
+  source?: 'wix' | 'manual';
 }
 
 export interface QuoteService {
@@ -86,4 +92,4 @@ export interface Quote {
   promoLocale: boolean;      // nasconde importi → "PROMO LOCALE"
 }
 
-export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings' | 'locations'; 
+export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings' | 'locations';

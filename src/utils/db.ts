@@ -56,6 +56,7 @@ interface DbCatalogItem {
   notes: string;
   price: number;
   sort_order: number;
+  source?: 'wix' | 'manual'; // 'wix' = importato da Wix API, 'manual' = creato in app
 }
 
 // ─── Mapping DB → App ────────────────────────────────────────────────────────
@@ -191,24 +192,28 @@ export async function dbDeleteQuote(id: string): Promise<boolean> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Genera il prossimo ID preventivo in modo atomico tramite RPC Supabase.
- * Fallback a timestamp locale se offline.
+ * Genera il prossimo ID documento in modo atomico tramite RPC Supabase.
+ * Il prefisso varia in base al tipo di documento:
+ *   - 'preventivo' → PREV-001
+ *   - 'contratto'  → CONTR-001
+ * Fallback a counter locale se offline.
  */
-export async function dbNextQuoteId(): Promise<string> {
-  const { data, error } = await supabase
-    .rpc('next_quote_number');
+export async function dbNextQuoteId(
+  documentType: 'preventivo' | 'contratto' = 'preventivo'
+): Promise<string> {
+  const prefix = documentType === 'contratto' ? 'CONTR' : 'PREV';
+
+  const { data, error } = await supabase.rpc('next_quote_number');
 
   if (error || data == null) {
-    console.warn('[db] nextQuoteId fallback to timestamp:', error?.message);
-    // Fallback offline: usa il counter locale da localStorage
+    console.warn('[db] nextQuoteId fallback to local counter:', error?.message);
     const local = parseInt(localStorage.getItem('preventivi_counter') || '0', 10) + 1;
     localStorage.setItem('preventivi_counter', String(local));
-    return `PREV-${String(local).padStart(3, '0')}`;
+    return `${prefix}-${String(local).padStart(3, '0')}`;
   }
 
-  // Sincronizza il counter locale con quello remoto (per il fallback offline)
   localStorage.setItem('preventivi_counter', String(data));
-  return `PREV-${String(data as number).padStart(3, '0')}`;
+  return `${prefix}-${String(data as number).padStart(3, '0')}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,21 +275,21 @@ export async function dbGetCatalog(): Promise<CatalogItem[] | null> {
     details: row.details,
     notes:   row.notes,
     price:   Number(row.price),
+    source:  row.source ?? 'wix',
   }));
 }
 
-/** Sostituisce tutto il catalogo con upsert atomico.
- *  - Assegna un ID univoco a ogni item che ha ID mancante o duplicato.
- *  - Usa upsert (onConflict: 'id') per evitare duplicate key violations.
- *  - Rimuove le righe orfane (presenti in DB ma non nel nuovo set).
+/**
+ * Salva l'intero catalogo sostituendolo.
+ * Usato per modifiche manuali dell'utente (CRUD in-app).
+ * Preserva il campo `source` di ogni item.
  */
 export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
   if (items.length === 0) {
-    // Se la lista è vuota, cancella tutto
     const { error } = await supabase
       .from('catalog')
       .delete()
-      .gte('sort_order', 0); // cancella tutte le righe (sort_order è sempre >= 0)
+      .gte('sort_order', 0);
     if (error) {
       console.error('[db] saveCatalog delete-all error:', error.message);
       return false;
@@ -292,14 +297,10 @@ export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
     return true;
   }
 
-  // Garantisce ID univoci: se due item hanno lo stesso id, il secondo riceve un UUID nuovo
   const seenIds = new Set<string>();
   const rows: DbCatalogItem[] = items.map((item, i) => {
     let id = item.id && item.id.trim() !== '' ? item.id : crypto.randomUUID();
-    // Se l'id è già stato visto in questa sessione, rinomina
-    if (seenIds.has(id)) {
-      id = crypto.randomUUID();
-    }
+    if (seenIds.has(id)) id = crypto.randomUUID();
     seenIds.add(id);
     return {
       id,
@@ -308,10 +309,10 @@ export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
       notes:      item.notes,
       price:      item.price,
       sort_order: i,
+      source:     (item as CatalogItem & { source?: string }).source === 'manual' ? 'manual' : 'wix',
     };
   });
 
-  // Upsert: aggiorna se esiste, inserisce se nuovo
   const { error: upsertError } = await supabase
     .from('catalog')
     .upsert(rows, { onConflict: 'id' });
@@ -321,7 +322,7 @@ export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
     return false;
   }
 
-  // Rimuovi le righe orfane: quelle presenti nel DB ma non nel nuovo set
+  // Rimuovi orfani (presenti in DB ma non nel nuovo set)
   const currentIds = rows.map(r => r.id);
   const { error: deleteError } = await supabase
     .from('catalog')
@@ -329,10 +330,99 @@ export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
     .not('id', 'in', `(${currentIds.map(id => `"${id}"`).join(',')})`);
 
   if (deleteError) {
-    // Non-fatal: l'upsert è già riuscito, le righe orfane non causano danni
     console.warn('[db] saveCatalog orphan-delete warning:', deleteError.message);
   }
 
+  return true;
+}
+
+/**
+ * Sincronizza gli item di Wix nel catalogo Supabase senza toccare gli item 'manual'.
+ *
+ * Strategia:
+ * 1. Recupera gli item 'manual' esistenti in Supabase → li preserva
+ * 2. Fa upsert degli item Wix con source='wix'
+ * 3. Elimina solo gli item Wix che NON sono più presenti nel nuovo set
+ *    (non tocca MAI gli item manual)
+ *
+ * Questo garantisce che i tuoi item creati in-app sopravvivano al sync Wix.
+ */
+export async function dbSyncWixCatalog(wixItems: CatalogItem[]): Promise<boolean> {
+  // 1. Prendi gli ID degli item manual esistenti in Supabase
+  const { data: existingManual, error: fetchError } = await supabase
+    .from('catalog')
+    .select('id, sort_order')
+    .eq('source', 'manual');
+
+  if (fetchError) {
+    console.error('[db] syncWixCatalog fetch manual error:', fetchError.message);
+    // Non blocchiamo — continuiamo con il sync Wix ma senza cancellare nulla
+  }
+
+  const manualIds = new Set<string>(
+    (existingManual ?? []).map((r: { id: string }) => r.id)
+  );
+
+  // Il sort_order degli item Wix parte dopo l'ultimo degli item manual
+  const maxManualOrder = existingManual && existingManual.length > 0
+    ? Math.max(...(existingManual as { sort_order: number }[]).map(r => r.sort_order))
+    : -1;
+
+  // 2. Prepara le righe Wix
+  const seenIds = new Set<string>();
+  const wixRows: DbCatalogItem[] = wixItems.map((item, i) => {
+    let id = item.id && item.id.trim() !== '' ? item.id : crypto.randomUUID();
+    if (seenIds.has(id)) id = crypto.randomUUID();
+    seenIds.add(id);
+    return {
+      id,
+      name:       item.name,
+      details:    item.details,
+      notes:      item.notes,
+      price:      item.price,
+      sort_order: maxManualOrder + 1 + i,
+      source:     'wix' as const,
+    };
+  });
+
+  // 3. Upsert item Wix
+  if (wixRows.length > 0) {
+    const { error: upsertError } = await supabase
+      .from('catalog')
+      .upsert(wixRows, { onConflict: 'id' });
+
+    if (upsertError) {
+      console.error('[db] syncWixCatalog upsert error:', upsertError.message);
+      return false;
+    }
+  }
+
+  // 4. Elimina solo gli item Wix orfani (non i manual)
+  const newWixIds = wixRows.map(r => r.id);
+  if (newWixIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('catalog')
+      .delete()
+      .eq('source', 'wix')
+      .not('id', 'in', `(${newWixIds.map(id => `"${id}"`).join(',')})`);
+
+    if (deleteError) {
+      console.warn('[db] syncWixCatalog orphan-delete warning:', deleteError.message);
+    }
+  }
+
+  // Aggiorna i sort_order degli item manual per tenerli in cima
+  if (existingManual && existingManual.length > 0) {
+    const manualUpdates = (existingManual as { id: string; sort_order: number }[]).map((r, i) => ({
+      id: r.id,
+      sort_order: i,
+    }));
+    for (const upd of manualUpdates) {
+      await supabase.from('catalog').update({ sort_order: upd.sort_order }).eq('id', upd.id);
+    }
+  }
+
+  console.log(`[db] syncWixCatalog OK: ${wixRows.length} Wix items, ${manualIds.size} manual preservati`);
   return true;
 }
 

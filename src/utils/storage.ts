@@ -88,9 +88,14 @@ export function deleteQuote(id: string): void {
 // QUOTE ID — atomico via Supabase, con fallback locale
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function getNextQuoteId(): string {
+/**
+ * Genera un ID temporaneo locale (solo per visualizzazione prima del salvataggio).
+ * Il prefisso dipende dal tipo di documento.
+ */
+export function getNextQuoteId(documentType: 'preventivo' | 'contratto' = 'preventivo'): string {
   const counter = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) + 1;
-  return `PREV-${String(counter).padStart(3, '0')}`;
+  const prefix = documentType === 'contratto' ? 'CONTR' : 'PREV';
+  return `${prefix}-${String(counter).padStart(3, '0')}`;
 }
 
 export async function consumeQuoteIdAsync(): Promise<string> {
@@ -102,10 +107,11 @@ export function consumeQuoteId(): void {
   localStorage.setItem(COUNTER_KEY, String(counter));
 }
 
-export function generateQuoteId(): string {
+export function generateQuoteId(documentType: 'preventivo' | 'contratto' = 'preventivo'): string {
   const counter = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) + 1;
   localStorage.setItem(COUNTER_KEY, String(counter));
-  return `PREV-${String(counter).padStart(3, '0')}`;
+  const prefix = documentType === 'contratto' ? 'CONTR' : 'PREV';
+  return `${prefix}-${String(counter).padStart(3, '0')}`;
 }
 
 export function getEmptyQuote(): Omit<Quote, 'id' | 'createdAt'> {
