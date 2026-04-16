@@ -1,16 +1,24 @@
 /**
  * db.ts — Layer di accesso dati Supabase
  *
- * Responsabilità:
- * - Mappare il modello DB (snake_case, JSONB) ↔ modello App (camelCase, TypeScript)
- * - Wrappare ogni operazione con try/catch e logging
- * - Nessuna logica di UI — solo dati
+ * CATALOG — strategia source:
+ * - source='wix'    → item importato dal sito Movida tramite sync API
+ * - source='manual' → item creato manualmente in app
+ *
+ * Regola d'oro: il sync Wix NON tocca MAI gli item source='manual'.
+ *
+ * Funzioni:
+ *   dbGetCatalog()         → legge tutto il catalogo (wix + manual)
+ *   dbSaveCatalog()        → salva il catalogo completo (CRUD in-app)
+ *   dbSaveManualItem()     → salva/aggiorna UN singolo item manual
+ *   dbDeleteCatalogItem()  → elimina un singolo item per id
+ *   dbSyncWixCatalog()     → sync Wix → Supabase (preserva sempre i manual)
  */
 
 import { supabase } from './supabase';
 import type { Quote, CompanySettings, CatalogItem } from './types';
 
-// ─── Tipi DB (snake_case, esattamente come in Supabase) ──────────────────────
+// ─── Tipi DB ─────────────────────────────────────────────────────────────────
 
 interface DbQuote {
   id: string;
@@ -56,58 +64,56 @@ interface DbCatalogItem {
   notes: string;
   price: number;
   sort_order: number;
-  source?: 'wix' | 'manual'; // 'wix' = importato da Wix API, 'manual' = creato in app
+  source: 'wix' | 'manual';
 }
 
 // ─── Mapping DB → App ────────────────────────────────────────────────────────
 
 function dbToQuote(row: DbQuote): Quote {
   return {
-    id: row.id,
-    createdAt: row.created_at,
+    id:            row.id,
+    createdAt:     row.created_at,
     client: {
-      name:       row.client_name,
-      address:    row.client_address,
-      phone:      row.client_phone,
-      eventType:  row.client_event_type,
-      location:   row.client_location,
-      date:       row.client_date,
-      timeFrom:   row.client_time_from,
-      timeTo:     row.client_time_to,
+      name:      row.client_name,
+      address:   row.client_address,
+      phone:     row.client_phone,
+      eventType: row.client_event_type,
+      location:  row.client_location,
+      date:      row.client_date,
+      timeFrom:  row.client_time_from,
+      timeTo:    row.client_time_to,
     },
-    services:      row.services ?? [],
+    services:      row.services       ?? [],
     discount:      Number(row.discount) || 0,
-    selectedNotes: row.selected_notes ?? [],
-    notes:         row.notes ?? '',
+    selectedNotes: row.selected_notes  ?? [],
+    notes:         row.notes           ?? '',
     status:        row.status,
     documentType:  row.document_type,
     paymentMethod: row.payment_method,
-    promoLocale:   row.promo_locale ?? false,
+    promoLocale:   row.promo_locale    ?? false,
   };
 }
 
-// ─── Mapping App → DB ────────────────────────────────────────────────────────
-
 function quoteToDB(q: Quote): Omit<DbQuote, 'updated_at' | 'quote_number'> {
   return {
-    id:                 q.id,
-    created_at:         q.createdAt,
-    client_name:        q.client.name,
-    client_address:     q.client.address,
-    client_phone:       q.client.phone,
-    client_event_type:  q.client.eventType,
-    client_location:    q.client.location,
-    client_date:        q.client.date,
-    client_time_from:   q.client.timeFrom,
-    client_time_to:     q.client.timeTo,
-    services:           q.services,
-    discount:           q.discount,
-    selected_notes:     q.selectedNotes ?? [],
-    notes:              q.notes ?? '',
-    status:             q.status,
-    document_type:      q.documentType,
-    payment_method:     q.paymentMethod,
-    promo_locale:       q.promoLocale ?? false,
+    id:                q.id,
+    created_at:        q.createdAt,
+    client_name:       q.client.name,
+    client_address:    q.client.address,
+    client_phone:      q.client.phone,
+    client_event_type: q.client.eventType,
+    client_location:   q.client.location,
+    client_date:       q.client.date,
+    client_time_from:  q.client.timeFrom,
+    client_time_to:    q.client.timeTo,
+    services:          q.services,
+    discount:          q.discount,
+    selected_notes:    q.selectedNotes  ?? [],
+    notes:             q.notes          ?? '',
+    status:            q.status,
+    document_type:     q.documentType,
+    payment_method:    q.paymentMethod,
+    promo_locale:      q.promoLocale    ?? false,
   };
 }
 
@@ -143,70 +149,50 @@ function settingsToDB(s: CompanySettings): Omit<DbSettings, 'id' | 'updated_at'>
 // QUOTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Carica tutti i preventivi ordinati per data aggiornamento */
 export async function dbGetQuotes(): Promise<Quote[]> {
   const { data, error } = await supabase
     .from('quotes')
     .select('*')
     .order('updated_at', { ascending: false });
 
-  if (error) {
-    console.error('[db] getQuotes error:', error.message);
-    return [];
-  }
-
+  if (error) { console.error('[db] getQuotes error:', error.message); return []; }
   return (data as DbQuote[]).map(dbToQuote);
 }
 
-/** Salva (upsert) un singolo preventivo */
 export async function dbSaveQuote(quote: Quote): Promise<boolean> {
-  const row = quoteToDB(quote);
-
   const { error } = await supabase
     .from('quotes')
-    .upsert(row, { onConflict: 'id' });
+    .upsert(quoteToDB(quote), { onConflict: 'id' });
 
-  if (error) {
-    console.error('[db] saveQuote error:', error.message);
-    return false;
-  }
+  if (error) { console.error('[db] saveQuote error:', error.message); return false; }
   return true;
 }
 
-/** Elimina un preventivo */
 export async function dbDeleteQuote(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('quotes')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('[db] deleteQuote error:', error.message);
-    return false;
-  }
+  const { error } = await supabase.from('quotes').delete().eq('id', id);
+  if (error) { console.error('[db] deleteQuote error:', error.message); return false; }
   return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// QUOTE ID COUNTER (atomico, no race condition)
+// QUOTE ID
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Genera il prossimo ID documento in modo atomico tramite RPC Supabase.
- * Il prefisso varia in base al tipo di documento:
- *   - 'preventivo' → PREV-001
- *   - 'contratto'  → CONTR-001
- * Fallback a counter locale se offline.
+ * Genera il prossimo ID documento in modo atomico.
+ * Prefisso:
+ *   'preventivo' → PREV-001
+ *   'contratto'  → CONTR-001
  */
 export async function dbNextQuoteId(
-  documentType: 'preventivo' | 'contratto' = 'preventivo'
+  documentType: 'preventivo' | 'contratto' = 'preventivo',
 ): Promise<string> {
   const prefix = documentType === 'contratto' ? 'CONTR' : 'PREV';
 
   const { data, error } = await supabase.rpc('next_quote_number');
 
   if (error || data == null) {
-    console.warn('[db] nextQuoteId fallback to local counter:', error?.message);
+    console.warn('[db] nextQuoteId fallback to local:', error?.message);
     const local = parseInt(localStorage.getItem('preventivi_counter') || '0', 10) + 1;
     localStorage.setItem('preventivi_counter', String(local));
     return `${prefix}-${String(local).padStart(3, '0')}`;
@@ -227,29 +213,17 @@ export async function dbGetSettings(): Promise<CompanySettings | null> {
     .eq('id', 'singleton')
     .maybeSingle();
 
-  if (error) {
-    console.error('[db] getSettings error:', error.message);
-    return null;
-  }
+  if (error) { console.error('[db] getSettings error:', error.message); return null; }
   if (!data) return null;
-
   return dbToSettings(data as DbSettings);
 }
 
 export async function dbSaveSettings(settings: CompanySettings): Promise<boolean> {
-  const row = {
-    id: 'singleton',
-    ...settingsToDB(settings),
-  };
-
   const { error } = await supabase
     .from('settings')
-    .upsert(row, { onConflict: 'id' });
+    .upsert({ id: 'singleton', ...settingsToDB(settings) }, { onConflict: 'id' });
 
-  if (error) {
-    console.error('[db] saveSettings error:', error.message);
-    return false;
-  }
+  if (error) { console.error('[db] saveSettings error:', error.message); return false; }
   return true;
 }
 
@@ -257,16 +231,14 @@ export async function dbSaveSettings(settings: CompanySettings): Promise<boolean
 // CATALOG
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Legge tutto il catalogo da Supabase (wix + manual). */
 export async function dbGetCatalog(): Promise<CatalogItem[] | null> {
   const { data, error } = await supabase
     .from('catalog')
-    .select('*')
+    .select('id, name, details, notes, price, sort_order, source')
     .order('sort_order', { ascending: true });
 
-  if (error) {
-    console.error('[db] getCatalog error:', error.message);
-    return null;
-  }
+  if (error) { console.error('[db] getCatalog error:', error.message); return null; }
   if (!data || data.length === 0) return null;
 
   return (data as DbCatalogItem[]).map(row => ({
@@ -280,26 +252,20 @@ export async function dbGetCatalog(): Promise<CatalogItem[] | null> {
 }
 
 /**
- * Salva l'intero catalogo sostituendolo.
- * Usato per modifiche manuali dell'utente (CRUD in-app).
- * Preserva il campo `source` di ogni item.
+ * Salva l'intero set di item (CRUD in-app).
+ * Mantiene il source originale di ogni item.
+ * Elimina gli orfani (qualunque source) che non sono nel nuovo set.
  */
 export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
   if (items.length === 0) {
-    const { error } = await supabase
-      .from('catalog')
-      .delete()
-      .gte('sort_order', 0);
-    if (error) {
-      console.error('[db] saveCatalog delete-all error:', error.message);
-      return false;
-    }
+    const { error } = await supabase.from('catalog').delete().gte('sort_order', 0);
+    if (error) { console.error('[db] saveCatalog delete-all error:', error.message); return false; }
     return true;
   }
 
   const seenIds = new Set<string>();
   const rows: DbCatalogItem[] = items.map((item, i) => {
-    let id = item.id && item.id.trim() !== '' ? item.id : crypto.randomUUID();
+    let id = item.id?.trim() || crypto.randomUUID();
     if (seenIds.has(id)) id = crypto.randomUUID();
     seenIds.add(id);
     return {
@@ -309,7 +275,8 @@ export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
       notes:      item.notes,
       price:      item.price,
       sort_order: i,
-      source:     (item as CatalogItem & { source?: string }).source === 'manual' ? 'manual' : 'wix',
+      // Preserva il source originale; se non c'è, default a 'wix'
+      source:     item.source === 'manual' ? 'manual' : 'wix',
     };
   });
 
@@ -322,56 +289,75 @@ export async function dbSaveCatalog(items: CatalogItem[]): Promise<boolean> {
     return false;
   }
 
-  // Rimuovi orfani (presenti in DB ma non nel nuovo set)
-  const currentIds = rows.map(r => r.id);
+  const ids = rows.map(r => `"${r.id}"`).join(',');
   const { error: deleteError } = await supabase
     .from('catalog')
     .delete()
-    .not('id', 'in', `(${currentIds.map(id => `"${id}"`).join(',')})`);
+    .not('id', 'in', `(${ids})`);
 
-  if (deleteError) {
-    console.warn('[db] saveCatalog orphan-delete warning:', deleteError.message);
-  }
-
+  if (deleteError) console.warn('[db] saveCatalog orphan-delete:', deleteError.message);
   return true;
 }
 
 /**
- * Sincronizza gli item di Wix nel catalogo Supabase senza toccare gli item 'manual'.
+ * Salva/aggiorna UN singolo item con source='manual'.
+ * Chiamata quando l'utente crea un nuovo item o lo modifica —
+ * garantisce che source sia sempre 'manual' indipendentemente da cosa
+ * c'era prima.
+ */
+export async function dbSaveManualItem(item: CatalogItem, sortOrder: number): Promise<boolean> {
+  const row: DbCatalogItem = {
+    id:         item.id,
+    name:       item.name,
+    details:    item.details,
+    notes:      item.notes,
+    price:      item.price,
+    sort_order: sortOrder,
+    source:     'manual',
+  };
+
+  const { error } = await supabase
+    .from('catalog')
+    .upsert(row, { onConflict: 'id' });
+
+  if (error) { console.error('[db] saveManualItem error:', error.message); return false; }
+  return true;
+}
+
+/**
+ * Elimina un singolo item dal catalogo Supabase.
+ */
+export async function dbDeleteCatalogItem(id: string): Promise<boolean> {
+  const { error } = await supabase.from('catalog').delete().eq('id', id);
+  if (error) { console.error('[db] deleteCatalogItem error:', error.message); return false; }
+  return true;
+}
+
+/**
+ * Sincronizza gli item Wix in Supabase senza MAI toccare source='manual'.
  *
- * Strategia:
- * 1. Recupera gli item 'manual' esistenti in Supabase → li preserva
- * 2. Fa upsert degli item Wix con source='wix'
- * 3. Elimina solo gli item Wix che NON sono più presenti nel nuovo set
- *    (non tocca MAI gli item manual)
- *
- * Questo garantisce che i tuoi item creati in-app sopravvivano al sync Wix.
+ * Algoritmo:
+ * 1. Conta i manual esistenti → li usa come offset per sort_order Wix
+ * 2. Upsert degli item Wix
+ * 3. Elimina SOLO i Wix orfani (source='wix' AND id non nel nuovo set)
+ * 4. Gli item source='manual' non vengono mai letti né modificati
  */
 export async function dbSyncWixCatalog(wixItems: CatalogItem[]): Promise<boolean> {
-  // 1. Prendi gli ID degli item manual esistenti in Supabase
-  const { data: existingManual, error: fetchError } = await supabase
+  if (wixItems.length === 0) return true;
+
+  // 1. Conta i manual per il sort_order offset
+  const { count: manualCount, error: countError } = await supabase
     .from('catalog')
-    .select('id, sort_order')
+    .select('id', { count: 'exact', head: true })
     .eq('source', 'manual');
 
-  if (fetchError) {
-    console.error('[db] syncWixCatalog fetch manual error:', fetchError.message);
-    // Non blocchiamo — continuiamo con il sync Wix ma senza cancellare nulla
-  }
+  if (countError) console.warn('[db] syncWix count manual error:', countError.message);
+  const manualOffset = manualCount ?? 0;
 
-  const manualIds = new Set<string>(
-    (existingManual ?? []).map((r: { id: string }) => r.id)
-  );
-
-  // Il sort_order degli item Wix parte dopo l'ultimo degli item manual
-  const maxManualOrder = existingManual && existingManual.length > 0
-    ? Math.max(...(existingManual as { sort_order: number }[]).map(r => r.sort_order))
-    : -1;
-
-  // 2. Prepara le righe Wix
+  // 2. Prepara righe Wix
   const seenIds = new Set<string>();
   const wixRows: DbCatalogItem[] = wixItems.map((item, i) => {
-    let id = item.id && item.id.trim() !== '' ? item.id : crypto.randomUUID();
+    let id = item.id?.trim() || crypto.randomUUID();
     if (seenIds.has(id)) id = crypto.randomUUID();
     seenIds.add(id);
     return {
@@ -380,49 +366,32 @@ export async function dbSyncWixCatalog(wixItems: CatalogItem[]): Promise<boolean
       details:    item.details,
       notes:      item.notes,
       price:      item.price,
-      sort_order: maxManualOrder + 1 + i,
+      sort_order: manualOffset + i,
       source:     'wix' as const,
     };
   });
 
-  // 3. Upsert item Wix
-  if (wixRows.length > 0) {
-    const { error: upsertError } = await supabase
-      .from('catalog')
-      .upsert(wixRows, { onConflict: 'id' });
+  // 3. Upsert Wix
+  const { error: upsertError } = await supabase
+    .from('catalog')
+    .upsert(wixRows, { onConflict: 'id' });
 
-    if (upsertError) {
-      console.error('[db] syncWixCatalog upsert error:', upsertError.message);
-      return false;
-    }
+  if (upsertError) {
+    console.error('[db] syncWixCatalog upsert error:', upsertError.message);
+    return false;
   }
 
-  // 4. Elimina solo gli item Wix orfani (non i manual)
-  const newWixIds = wixRows.map(r => r.id);
-  if (newWixIds.length > 0) {
-    const { error: deleteError } = await supabase
-      .from('catalog')
-      .delete()
-      .eq('source', 'wix')
-      .not('id', 'in', `(${newWixIds.map(id => `"${id}"`).join(',')})`);
+  // 4. Elimina SOLO i Wix orfani — MAI i manual
+  const newWixIds = wixRows.map(r => `"${r.id}"`).join(',');
+  const { error: deleteError } = await supabase
+    .from('catalog')
+    .delete()
+    .eq('source', 'wix')
+    .not('id', 'in', `(${newWixIds})`);
 
-    if (deleteError) {
-      console.warn('[db] syncWixCatalog orphan-delete warning:', deleteError.message);
-    }
-  }
+  if (deleteError) console.warn('[db] syncWixCatalog orphan-delete warning:', deleteError.message);
 
-  // Aggiorna i sort_order degli item manual per tenerli in cima
-  if (existingManual && existingManual.length > 0) {
-    const manualUpdates = (existingManual as { id: string; sort_order: number }[]).map((r, i) => ({
-      id: r.id,
-      sort_order: i,
-    }));
-    for (const upd of manualUpdates) {
-      await supabase.from('catalog').update({ sort_order: upd.sort_order }).eq('id', upd.id);
-    }
-  }
-
-  console.log(`[db] syncWixCatalog OK: ${wixRows.length} Wix items, ${manualIds.size} manual preservati`);
+  console.log(`[db] syncWixCatalog OK — ${wixRows.length} Wix, ${manualOffset} manual preservati`);
   return true;
 }
 
@@ -437,38 +406,27 @@ export async function dbGetLocations(): Promise<string[]> {
     .order('used_at', { ascending: false })
     .limit(50);
 
-  if (error) {
-    console.warn('[db] getLocations error:', error.message);
-    return [];
-  }
-
+  if (error) { console.warn('[db] getLocations error:', error.message); return []; }
   return (data as { location: string }[]).map(r => r.location);
 }
 
 export async function dbSaveLocation(location: string): Promise<void> {
-  const normalized = location.trim().toUpperCase();
   await supabase
     .from('saved_locations')
-    .upsert({ location: normalized, used_at: new Date().toISOString() }, { onConflict: 'location' });
+    .upsert(
+      { location: location.trim().toUpperCase(), used_at: new Date().toISOString() },
+      { onConflict: 'location' },
+    );
 }
 
 export async function dbDeleteLocation(location: string): Promise<void> {
-  await supabase
-    .from('saved_locations')
-    .delete()
-    .eq('location', location);
+  await supabase.from('saved_locations').delete().eq('location', location);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REALTIME SUBSCRIPTION
+// REALTIME
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Sottoscrive ai cambiamenti della tabella quotes.
- * Chiama onInsertOrUpdate quando un preventivo viene creato/aggiornato,
- * onDelete quando viene eliminato.
- * Ritorna la funzione di cleanup (unsubscribe).
- */
 export function subscribeToQuotes(
   onInsertOrUpdate: (quote: Quote) => void,
   onDelete: (id: string) => void,
@@ -484,11 +442,9 @@ export function subscribeToQuotes(
         } else {
           onInsertOrUpdate(dbToQuote(payload.new as DbQuote));
         }
-      }
+      },
     )
     .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
+  return () => { supabase.removeChannel(channel); };
 }
