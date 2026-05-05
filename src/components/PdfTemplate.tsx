@@ -524,7 +524,9 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
                   const lineDiscount = isOmaggio ? 0 : s.itemDiscount || 0;
                   const lineTotal = lineSubtotal - lineDiscount;
                   const hasNotes = !!s.notes;
-                  const cleanName = s.name ? s.name.replace(/^\[.*?\]\s*/, '').trim() : '';
+                  const cleanName = s.name
+                    ? s.name.replace(/^\[.*?\]\s*/, "").trim()
+                    : "";
 
                   return (
                     <React.Fragment key={i}>
@@ -698,6 +700,39 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
         {/* ══════════════════════════════════════════════════════════════
             FOOTER
         ══════════════════════════════════════════════════════════════ */}
+        {allNotes.length > 0 && (
+          <div
+            style={{
+              marginTop: sp(15),
+              marginBottom: sp(15),
+              paddingTop: sp(8),
+              borderTop: "1px dashed #cccccc",
+              fontSize: fs(9.5), // Aumentato da 8.5
+              lineHeight: "1.7",
+              color: "#333333",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: "bold",
+                marginBottom: sp(3),
+                fontSize: fs(10),
+              }}
+            >
+              NOTE AGGIUNTIVE:
+            </div>
+            {allNotes.map((n, i) => (
+              <div
+                key={i}
+                style={{ display: "flex", gap: "5px", marginBottom: "1px" }}
+              >
+                <span style={{ fontWeight: "bold", flexShrink: 0 }}>•</span>
+                <span>{n}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div
           style={{
             borderTop: "2px solid #000",
@@ -718,6 +753,10 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
               gap: sp(10),
             }}
           >
+            {/* ══════════════════════════════════════════════════════════════
+            NOTE GLOBALI
+        ══════════════════════════════════════════════════════════════ */}
+
             {/* Intestazione cliente */}
             <div style={{ fontSize: fs(10.5), lineHeight: "1.65" }}>
               <div
@@ -846,17 +885,6 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
                       <div>IBAN {settings.iban}</div>
                     </div>
                   )}
-
-                  <div
-                    style={{
-                      fontSize: fs(9.5),
-                      color: "#555",
-                      marginTop: sp(5),
-                      fontWeight: "bold",
-                    }}
-                  >
-                    N.B I PREZZI SI INTENDONO IVA 22% ESCLUSA
-                  </div>
                 </>
               )}
             </div>
@@ -1001,41 +1029,6 @@ export default function PdfTemplate({ quote, settings }: PdfTemplateProps) {
             </div>
           </div>
         </div>
-
-        {/* ══════════════════════════════════════════════════════════════
-            NOTE GLOBALI
-        ══════════════════════════════════════════════════════════════ */}
-        {allNotes.length > 0 && (
-          <div
-            style={{
-              marginTop: sp(15),
-              paddingTop: sp(8),
-              borderTop: "1px dashed #cccccc",
-              fontSize: fs(9.5), // Aumentato da 8.5
-              lineHeight: "1.7",
-              color: "#333333",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: "bold",
-                marginBottom: sp(3),
-                fontSize: fs(10),
-              }}
-            >
-              NOTE AGGIUNTIVE:
-            </div>
-            {allNotes.map((n, i) => (
-              <div
-                key={i}
-                style={{ display: "flex", gap: "5px", marginBottom: "1px" }}
-              >
-                <span style={{ fontWeight: "bold", flexShrink: 0 }}>•</span>
-                <span>{n}</span>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* ══════════════════════════════════════════════════════════════
             SCRITTA LEGALE FINALE
