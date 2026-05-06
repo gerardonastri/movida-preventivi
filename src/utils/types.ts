@@ -1,3 +1,5 @@
+// utils/types.ts — MODIFICA: aggiunta 'locations-notes' a View
+
 export interface ServiceItem {
   name: string;
   details?: string;
@@ -23,11 +25,6 @@ export interface CatalogItem {
   details: string;
   notes: string;
   price: number;
-  /** Indica l'origine dell'item:
-   *  - 'wix'    → importato dal sito Movida tramite sync API
-   *  - 'manual' → creato manualmente in app
-   * Gli item 'manual' sopravvivono al sync Wix.
-   */
   source?: 'wix' | 'manual';
 }
 
@@ -39,7 +36,7 @@ export interface QuoteService {
   qty: number;
   unitPrice: number;
   itemDiscount?: number;
-  omaggio?: boolean;   // se true → riga resa gratis, importo 0 sul PDF
+  omaggio?: boolean;
 }
 
 export interface ClientInfo {
@@ -74,7 +71,6 @@ export const DEFAULT_FOOTER_NOTES: string[] = [
   "IN CASO DI CONDIZIONI ATMOSFERICHE AVVERSE I GIOCHI SARANNO ADATTATI NEGLI SPAZI INTERNI. IN MANCANZA DI QUESTI IN MODALITA' STATICA AL TAVOLO IN ATTESA DI RIPRENDERE ALL'ESTERNO",
 ];
 
-// Scritta legale che appare SEMPRE in fondo ad ogni documento
 export const LEGAL_CLOSING =
   'Il presente documento ha validità legale anche senza firma autografa e si intende accettato al momento del ricevimento.';
 
@@ -84,12 +80,13 @@ export interface Quote {
   client: ClientInfo;
   services: QuoteService[];
   discount: number;
-  selectedNotes: string[];   // note checkbox selezionate
-  notes: string;             // testo libero aggiuntivo
+  selectedNotes: string[];
+  notes: string;
   status: 'draft' | 'sent' | 'confirmed';
   documentType: 'preventivo' | 'contratto';
   paymentMethod: 'contanti' | 'bonifico';
-  promoLocale: boolean;      // nasconde importi → "PROMO LOCALE"
+  promoLocale: boolean;
 }
 
-export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings' | 'locations';
+// ── MODIFICA: aggiunta 'locations-notes' ────────────────────────────────────
+export type View = 'dashboard' | 'new' | 'quotes' | 'catalog' | 'settings' | 'locations' | 'locations-notes';

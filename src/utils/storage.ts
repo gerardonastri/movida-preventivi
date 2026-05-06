@@ -12,8 +12,12 @@ import {
   dbNextQuoteId,
   dbGetLocations,
   dbSaveLocation,
-  dbDeleteLocation,
+  dbDeleteLocation, dbSaveAllFooterNotes,
+  dbGetFooterNotes,
+  type FooterNote,
 } from './db';
+
+import { DEFAULT_FOOTER_NOTES } from './types';
 
 // ─── localStorage keys ───────────────────────────────────────────────────────
 const QUOTES_KEY               = 'preventivi_quotes';
@@ -23,6 +27,7 @@ const CATALOG_KEY              = 'preventivi_catalog';
 const CATALOG_API_KEY          = 'preventivi_catalog_api';
 const CATALOG_API_TIMESTAMP_KEY = 'preventivi_catalog_api_timestamp';
 const LOCATIONS_KEY            = 'preventivi_locations';
+const FOOTER_NOTES_KEY         = 'preventivi_footer_notes';
 
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CATALOG_API_URL      = 'https://www.movidaintour.it/_functions/catalogo';
@@ -327,14 +332,16 @@ export interface SyncResult {
   settings: CompanySettings;
   catalogItems: CatalogItem[];
   locations: string[];
+  footerNotes: FooterNote[]; 
 }
 
 export async function syncFromSupabase(): Promise<SyncResult> {
-  const [quotes, remoteSettings, remoteCatalog, remoteLocations] = await Promise.allSettled([
+  const [quotes, remoteSettings, remoteCatalog, remoteLocations, remoteNotesRes] = await Promise.allSettled([
     dbGetQuotes(),
     dbGetSettings(),
     dbGetCatalog(),
     dbGetLocations(),
+    dbGetFooterNotes()
   ]);
 
   const remoteQuotes = quotes.status === 'fulfilled' ? quotes.value : [];
@@ -364,10 +371,44 @@ export async function syncFromSupabase(): Promise<SyncResult> {
     localStorage.setItem(LOCATIONS_KEY, JSON.stringify(merged));
   }
 
+  let finalNotes = getFooterNotes();
+  const remoteNotes = remoteNotesRes.status === 'fulfilled'
+    ? (remoteNotesRes.value as FooterNote[] | null | undefined)
+    : null;
+  if (Array.isArray(remoteNotes) && remoteNotes.length > 0) {
+    finalNotes = remoteNotes;
+    localStorage.setItem(FOOTER_NOTES_KEY, JSON.stringify(finalNotes));
+  }
+
   return {
     quotes: remoteQuotes.length > 0 ? remoteQuotes : getQuotes(),
     settings: finalSettings,
     catalogItems: finalCatalog,
     locations: finalLocations,
+    footerNotes: finalNotes
   };
+}
+
+// ─── FOOTER NOTES ─────────────────────────────────────────────────────────────
+// Carica le note a piè di pagina (localStorage come cache, DB come source of truth)
+export function getFooterNotes(): FooterNote[] {
+  try {
+    const raw = localStorage.getItem(FOOTER_NOTES_KEY);
+    if (raw) return JSON.parse(raw) as FooterNote[];
+  } catch { /* fallback */ }
+  // Prima volta: seed dai default
+  const defaults: FooterNote[] = DEFAULT_FOOTER_NOTES.map((content, i) => ({
+    id: crypto.randomUUID(),
+    content,
+    sortOrder: i,
+  }));
+  localStorage.setItem(FOOTER_NOTES_KEY, JSON.stringify(defaults));
+  return defaults;
+}
+
+export function saveFooterNotes(notes: FooterNote[]): void {
+  localStorage.setItem(FOOTER_NOTES_KEY, JSON.stringify(notes));
+  dbSaveAllFooterNotes(notes).catch(err =>
+    console.error('[storage] saveFooterNotes sync error:', err)
+  );
 }

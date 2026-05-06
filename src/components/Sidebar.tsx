@@ -13,7 +13,7 @@ const navItems: { id: View; label: string; icon: string }[] = [
   { id: 'new',       label: 'Nuovo preventivo', icon: '+' },
   { id: 'quotes',    label: 'Preventivi',       icon: '≡' },
   { id: 'catalog',   label: 'Catalogo',         icon: '🏷️' },
-  { id: 'locations', label: 'Location',         icon: '📍' },
+  { id: 'locations-notes', label: 'Strutture & Note',  icon: '📋' },
   { id: 'settings',  label: 'Impostazioni',     icon: '⚙' },
 ];
 

@@ -179,26 +179,32 @@ export async function dbDeleteQuote(id: string): Promise<boolean> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Genera il prossimo ID documento in modo atomico.
- * Prefisso:
- *   'preventivo' → PREV-001
- *   'contratto'  → CONTR-001
+ * Genera il prossimo ID documento in modo atomico con contatori SEPARATI.
+ *
+ * - 'preventivo' → usa RPC next_quote_number    (contatore 'main')    → PREV-001
+ * - 'contratto'  → usa RPC next_contract_number (contatore 'contracts') → CONTR-001
+ *
+ * In questo modo i numeri di preventivi e contratti sono indipendenti:
+ * PREV-001, PREV-002, CONTR-001, PREV-003, CONTR-002 — mai CONTR-007.
  */
 export async function dbNextQuoteId(
   documentType: 'preventivo' | 'contratto' = 'preventivo',
 ): Promise<string> {
-  const prefix = documentType === 'contratto' ? 'CONTR' : 'PREV';
+  const isContratto = documentType === 'contratto';
+  const prefix      = isContratto ? 'CONTR' : 'PREV';
+  const rpcName     = isContratto ? 'next_contract_number' : 'next_quote_number';
+  const localKey    = isContratto ? 'preventivi_counter_contracts' : 'preventivi_counter';
 
-  const { data, error } = await supabase.rpc('next_quote_number');
+  const { data, error } = await supabase.rpc(rpcName);
 
   if (error || data == null) {
-    console.warn('[db] nextQuoteId fallback to local:', error?.message);
-    const local = parseInt(localStorage.getItem('preventivi_counter') || '0', 10) + 1;
-    localStorage.setItem('preventivi_counter', String(local));
+    console.warn(`[db] ${rpcName} fallback to local:`, error?.message);
+    const local = parseInt(localStorage.getItem(localKey) || '0', 10) + 1;
+    localStorage.setItem(localKey, String(local));
     return `${prefix}-${String(local).padStart(3, '0')}`;
   }
 
-  localStorage.setItem('preventivi_counter', String(data));
+  localStorage.setItem(localKey, String(data));
   return `${prefix}-${String(data as number).padStart(3, '0')}`;
 }
 
@@ -421,6 +427,80 @@ export async function dbSaveLocation(location: string): Promise<void> {
 
 export async function dbDeleteLocation(location: string): Promise<void> {
   await supabase.from('saved_locations').delete().eq('location', location);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOOTER NOTES — note a piè di pagina salvate nel DB
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FooterNote {
+  id: string;
+  content: string;
+  sortOrder: number;
+}
+
+interface DbFooterNote {
+  id: string;
+  content: string;
+  sort_order: number;
+}
+
+export async function dbGetFooterNotes(): Promise<FooterNote[]> {
+  const { data, error } = await supabase
+    .from('footer_notes')
+    .select('id, content, sort_order')
+    .order('sort_order', { ascending: true });
+
+  if (error) { console.error('[db] getFooterNotes error:', error.message); return []; }
+  return (data as DbFooterNote[]).map(r => ({
+    id:        r.id,
+    content:   r.content,
+    sortOrder: r.sort_order,
+  }));
+}
+
+export async function dbSaveFooterNote(note: FooterNote): Promise<boolean> {
+  const { error } = await supabase
+    .from('footer_notes')
+    .upsert(
+      { id: note.id, content: note.content, sort_order: note.sortOrder },
+      { onConflict: 'id' },
+    );
+  if (error) { console.error('[db] saveFooterNote error:', error.message); return false; }
+  return true;
+}
+
+export async function dbDeleteFooterNote(id: string): Promise<boolean> {
+  const { error } = await supabase.from('footer_notes').delete().eq('id', id);
+  if (error) { console.error('[db] deleteFooterNote error:', error.message); return false; }
+  return true;
+}
+
+/** Riscrive l'intero set di note in un'unica operazione atomica. */
+export async function dbSaveAllFooterNotes(notes: FooterNote[]): Promise<boolean> {
+  // Upsert di tutte le note correnti
+  if (notes.length > 0) {
+    const rows: DbFooterNote[] = notes.map((n, i) => ({
+      id:         n.id,
+      content:    n.content,
+      sort_order: i,
+    }));
+    const { error: upsertErr } = await supabase
+      .from('footer_notes')
+      .upsert(rows, { onConflict: 'id' });
+    if (upsertErr) { console.error('[db] saveAllFooterNotes upsert error:', upsertErr.message); return false; }
+  }
+
+  // Elimina le note orfane (quelle che non sono nel nuovo set)
+  if (notes.length > 0) {
+    const ids = notes.map(n => `"${n.id}"`).join(',');
+    await supabase.from('footer_notes').delete().not('id', 'in', `(${ids})`);
+  } else {
+    // Se la lista è vuota, cancella tutto
+    await supabase.from('footer_notes').delete().gte('sort_order', 0);
+  }
+
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
