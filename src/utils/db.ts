@@ -41,6 +41,7 @@ interface DbQuote {
   payment_method: Quote['paymentMethod'];
   promo_locale: boolean;
   quote_number: number;
+  acconto: number;
 }
 
 interface DbSettings {
@@ -91,6 +92,7 @@ function dbToQuote(row: DbQuote): Quote {
     documentType:  row.document_type,
     paymentMethod: row.payment_method,
     promoLocale:   row.promo_locale    ?? false,
+    acconto:       Number(row.acconto)  || 0,
   };
 }
 
@@ -106,6 +108,7 @@ function quoteToDB(q: Quote): Omit<DbQuote, 'updated_at' | 'quote_number'> {
     client_date:       q.client.date,
     client_time_from:  q.client.timeFrom,
     client_time_to:    q.client.timeTo,
+    acconto:           q.acconto,
     services:          q.services,
     discount:          q.discount,
     selected_notes:    q.selectedNotes  ?? [],

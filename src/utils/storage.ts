@@ -124,6 +124,7 @@ export function getEmptyQuote(): Omit<Quote, 'id' | 'createdAt'> {
     client: { name: '', address: '', phone: '', eventType: '', location: '', date: '', timeFrom: '', timeTo: '' },
     services: [],
     discount: 0,
+    acconto: 0, // <-- AGGIUNTO
     selectedNotes: [],
     notes: '',
     status: 'draft',
