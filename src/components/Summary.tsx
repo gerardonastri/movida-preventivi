@@ -6,6 +6,8 @@ interface SummaryProps {
   services: QuoteService[];
   discount: number;
   onDiscountChange: (discount: number) => void;
+  acconto: number; // Nuovo campo
+  onAccontoChange: (acconto: number) => void; // Nuovo handler
   selectedNotes: string[];
   onSelectedNotesChange: (notes: string[]) => void;
   notes: string;
@@ -22,6 +24,8 @@ export default function Summary({
   services,
   discount,
   onDiscountChange,
+  acconto,
+  onAccontoChange,
   selectedNotes,
   onSelectedNotesChange,
   notes,
@@ -41,21 +45,21 @@ export default function Summary({
     return s.omaggio || /\bomaggio\b/i.test(textToSearch);
   };
 
-  // 2. Subtotale pulito: Se la riga è in omaggio, aggiunge letteralmente 0€ al subtotale
+  // 2. Subtotale: Righe non in omaggio
   const subtotal = services.reduce((acc, s) => {
     if (checkOmaggio(s)) return acc; 
     return acc + (s.qty * s.unitPrice);
   }, 0);
 
-  // 3. Sconti su riga: Ignora le righe in omaggio per non creare doppi sconti sfalsati
+  // 3. Sconti su riga: Ignora omaggi
   const itemDiscounts = services.reduce((acc, s) => {
     if (checkOmaggio(s)) return acc; 
     return acc + (s.itemDiscount || 0);
   }, 0);
 
-  const total = subtotal - discount - itemDiscounts;
+  // 4. Totale Finale: Sottrae sconti e acconto
+  const total = subtotal - discount - itemDiscounts - acconto;
 
-  // Toggle singola nota nel checkbox
   function toggleNote(note: string) {
     if (selectedNotes.includes(note)) {
       onSelectedNotesChange(selectedNotes.filter(n => n !== note));
@@ -71,7 +75,7 @@ export default function Summary({
     <div className="bg-white rounded-2xl p-6 shadow-[var(--shadow-card)] border border-[var(--border)] sticky top-24 space-y-5">
       <h3 className="text-lg font-semibold text-[var(--text-primary)]">Riepilogo & Opzioni</h3>
 
-      {/* ── Tipo Documento ───────────────────────────────────────── */}
+      {/* Tipo Documento */}
       <div>
         <label className={labelCls}>Tipo Documento</label>
         <div className="flex gap-4">
@@ -95,7 +99,7 @@ export default function Summary({
         )}
       </div>
 
-      {/* ── Modalità Pagamento ───────────────────────────────────── */}
+      {/* Modalità Pagamento */}
       <div>
         <label className={labelCls}>Modalità Pagamento</label>
         <div className="flex flex-col gap-2">
@@ -117,7 +121,7 @@ export default function Summary({
         </div>
       </div>
 
-      {/* ── PROMO LOCALE ─────────────────────────────────────────── */}
+      {/* PROMO LOCALE */}
       <div className={`rounded-xl border-2 p-3 transition-all ${
         promoLocale
           ? 'border-orange-400 bg-orange-50'
@@ -147,7 +151,7 @@ export default function Summary({
 
       <hr className="border-[var(--border)]" />
 
-      {/* ── Totali (nascosti se Promo Locale) ───────────────────── */}
+      {/* Totali */}
       {promoLocale ? (
         <div className="text-center py-4 rounded-xl border-2 border-dashed border-orange-300 bg-orange-50">
           <p className="text-lg font-bold text-orange-600 tracking-widest">PROMO LOCALE</p>
@@ -167,6 +171,7 @@ export default function Summary({
             </div>
           )}
 
+          {/* Sconto Globale */}
           <div className="flex items-center justify-between text-sm text-[var(--text-secondary)]">
             <span>Sconto globale (€)</span>
             <div className="w-28 relative">
@@ -176,6 +181,22 @@ export default function Summary({
                 min="0"
                 value={discount || ''}
                 onChange={(e) => onDiscountChange(Number(e.target.value))}
+                placeholder="0"
+                className="w-full bg-[var(--bg-tertiary)] text-right rounded-lg pl-7 pr-3 py-1.5 focus:ring-2 focus:ring-[var(--accent)] outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Acconto Versato */}
+          <div className="flex items-center justify-between text-sm text-[var(--text-secondary)]">
+            <span>Acconto versato (€)</span>
+            <div className="w-28 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--text-muted)]">€</span>
+              <input
+                type="number"
+                min="0"
+                value={acconto || ''}
+                onChange={(e) => onAccontoChange(Number(e.target.value))}
                 placeholder="0"
                 className="w-full bg-[var(--bg-tertiary)] text-right rounded-lg pl-7 pr-3 py-1.5 focus:ring-2 focus:ring-[var(--accent)] outline-none"
               />
@@ -196,7 +217,7 @@ export default function Summary({
         </div>
       )}
 
-      {/* ── Note a piè di pagina — CHECKBOX MULTIPLI ────────────── */}
+      {/* Note a piè di pagina */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className={labelCls + ' mb-0'}>Note a piè di pagina</label>
@@ -209,7 +230,6 @@ export default function Summary({
           </button>
         </div>
 
-        {/* Lista checkbox — collassabile */}
         {notesOpen && (
           <div className="mb-3 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl overflow-hidden divide-y divide-[var(--border)]">
             {DEFAULT_FOOTER_NOTES.map((note) => {
@@ -234,7 +254,6 @@ export default function Summary({
               );
             })}
 
-            {/* Deseleziona tutte */}
             {selectedNotes.length > 0 && (
               <button
                 type="button"
@@ -247,7 +266,6 @@ export default function Summary({
           </div>
         )}
 
-        {/* Preview note selezionate (sempre visibile anche quando chiuso) */}
         {!notesOpen && selectedNotes.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1">
             {selectedNotes.map(n => (
@@ -262,7 +280,6 @@ export default function Summary({
           </div>
         )}
 
-        {/* Testo libero aggiuntivo */}
         <textarea
           value={notes}
           onChange={(e) => onNotesChange(e.target.value)}

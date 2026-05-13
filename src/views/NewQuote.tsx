@@ -84,6 +84,7 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
         ...initialQuote,
         selectedNotes: initialQuote.selectedNotes ?? [],
         promoLocale:   initialQuote.promoLocale   ?? false,
+        acconto:       initialQuote.acconto       ?? 0,
       };
     }
     // ID temporaneo locale, verrà sostituito al primo salvataggio
@@ -420,6 +421,8 @@ export default function NewQuote({ initialQuote, onSave, onBack }: NewQuoteProps
             selectedNotes={quote.selectedNotes ?? []}
             onSelectedNotesChange={(selectedNotes) => setQuote({ ...quote, selectedNotes })}
             notes={quote.notes}
+            acconto={quote.acconto ?? 0} // <-- AGGIUNTO
+            onAccontoChange={(acconto) => setQuote({ ...quote, acconto })} // <-- AGGIUNTO  
             onNotesChange={(notes) => setQuote({ ...quote, notes })}
             documentType={quote.documentType}
             onDocumentTypeChange={(type) => setQuote({ ...quote, documentType: type })}

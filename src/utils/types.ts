@@ -80,6 +80,7 @@ export interface Quote {
   client: ClientInfo;
   services: QuoteService[];
   discount: number;
+  acconto: number;
   selectedNotes: string[];
   notes: string;
   status: 'draft' | 'sent' | 'confirmed';
