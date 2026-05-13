@@ -80,6 +80,7 @@ export function getEmptyQuote(): Omit<Quote, 'id' | 'createdAt'> {
     client: { name: '', address: '', phone: '', eventType: '', location: '', date: '', timeFrom: '', timeTo: '' },
     services: [],
     discount: 0,
+    acconto: 0,          // <-- AGGIUNTO QUI
     selectedNotes: [],   // nessuna nota preselezionata
     notes: '',           // nessun testo libero predefinito
     status: 'draft',
